@@ -36,6 +36,7 @@ public class DataRefreshIntent extends RoboIntentService {
     protected void onHandleIntent(Intent intent) {
         LatLongCoordinates coords = (LatLongCoordinates) intent.getSerializableExtra("com.nexradnow.android.coords");
         List<NexradStation> srcStations = nexradDataManager.getNexradStations();
+        // TODO: handle null or empty list due to download/cache failure
         List<NexradStation> stations = nexradDataManager.sortClosest(srcStations, coords);
         // Pick the four closest stations IF the distance to the nearest is less than 350 km.
         if (coords.distanceTo(stations.get(0).getCoords())>350.0) {

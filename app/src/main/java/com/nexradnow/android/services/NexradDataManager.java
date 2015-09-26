@@ -16,8 +16,14 @@ import org.apache.commons.net.ftp.FTPClientConfig;
 import org.apache.commons.net.ftp.FTPFile;
 import org.apache.commons.net.ftp.FTPHTTPClient;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.URL;
 import java.net.URLConnection;
@@ -42,41 +48,68 @@ public class NexradDataManager {
     protected Context ctx;
 
     public final static String TAG="NEXRADDATA";
+    protected final static String CACHESTATIONFILE = "nxstations.obj";
 
     public List<NexradStation> getNexradStations () {
-        // TODO: Check cache to see if anything exists
-
-        // Fetch list of stations at: http://www.ncdc.noaa.gov/homr/file/nexrad-stations.txt
-        String urlString = "http://www.ncdc.noaa.gov/homr/file/nexrad-stations.txt";
-        List<NexradStation> results = new ArrayList<NexradStation>();
-        try {
-            URL url = new URL(urlString);
-            URLConnection conn = url.openConnection();
-            InputStream is = conn.getInputStream();
-            List<String> stationList = IOUtils.readLines(is);
-            boolean inHeader = true;
-            for (String line : stationList) {
-                if (line.startsWith("---")) {
-                    inHeader = false;
-                    continue;
-                } else if (inHeader) {
-                    continue;
-                }
-                // Fixed-length lines (verify length is as expected!)
-                line = line.trim();
-                if ((line.length() != 146)||(!line.endsWith("NEXRAD"))) {
-                    throw new IOException("unexpected NEXRAD station list file format");
-                }
-                String identifier = line.substring(9, 13);
-                String latitude = line.substring(106, 115);
-                String longitude = line.substring(116, 126);
-                Log.d(TAG,"station ["+identifier+"] lat["+latitude+"] long["+longitude+"]");
-                LatLongCoordinates coords = new LatLongCoordinates(Float.parseFloat(latitude),Float.parseFloat(longitude));
-                NexradStation station = new NexradStation(identifier,coords);
-                results.add(station);
+        List<NexradStation> results = null;
+        File cachedList = new File(ctx.getCacheDir(),CACHESTATIONFILE);
+        if (cachedList.exists()&&cachedList.canRead()) {
+            // Load from cache
+            try {
+                InputStream fis = new FileInputStream(cachedList);
+                ObjectInputStream ois = new ObjectInputStream(new FileInputStream(cachedList));
+                results = (List<NexradStation>)ois.readObject();
+                ois.close();
+                fis.close();
+            } catch (Exception ex) {
+                Log.e(TAG,"error reading cached station list",ex);
+                results = null;
             }
-        } catch (IOException ioex) {
-            Log.e(TAG, "error fetching list of NEXRAD stations", ioex);
+        }
+        if (results == null) {
+            // Fetch list of stations at: http://www.ncdc.noaa.gov/homr/file/nexrad-stations.txt
+            String urlString = "http://www.ncdc.noaa.gov/homr/file/nexrad-stations.txt";
+            try {
+                URL url = new URL(urlString);
+                URLConnection conn = url.openConnection();
+                InputStream is = conn.getInputStream();
+                List<String> stationList = IOUtils.readLines(is);
+                results = new ArrayList<NexradStation>();
+                boolean inHeader = true;
+                for (String line : stationList) {
+                    if (line.startsWith("---")) {
+                        inHeader = false;
+                        continue;
+                    } else if (inHeader) {
+                        continue;
+                    }
+                    // Fixed-length lines (verify length is as expected!)
+                    line = line.trim();
+                    if ((line.length() != 146) || (!line.endsWith("NEXRAD"))) {
+                        throw new IOException("unexpected NEXRAD station list file format");
+                    }
+                    String identifier = line.substring(9, 13);
+                    String latitude = line.substring(106, 115);
+                    String longitude = line.substring(116, 126);
+                    Log.d(TAG, "station [" + identifier + "] lat[" + latitude + "] long[" + longitude + "]");
+                    LatLongCoordinates coords = new LatLongCoordinates(Float.parseFloat(latitude), Float.parseFloat(longitude));
+                    NexradStation station = new NexradStation(identifier, coords);
+                    results.add(station);
+                }
+            } catch (IOException ioex) {
+                Log.e(TAG, "error fetching list of NEXRAD stations", ioex);
+                // TODO: propagate error to app for user to see
+            }
+            // Write to cache
+            try {
+                OutputStream os = new FileOutputStream(cachedList);
+                ObjectOutputStream oos = new ObjectOutputStream(os);
+                oos.writeObject(results);
+                oos.close();
+                os.close();
+            } catch (Exception ex) {
+                Log.e(TAG, "error writing cached station list file", ex);
+            }
         }
         return results;
     }
