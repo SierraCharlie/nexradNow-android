@@ -98,7 +98,7 @@ public class NexradDataManager {
                 }
             } catch (IOException ioex) {
                 Log.e(TAG, "error fetching list of NEXRAD stations", ioex);
-                // TODO: propagate error to app for user to see
+                throw new RuntimeException("error fetching list of NEXRAD stations: "+ioex.toString(), ioex);
             }
             // Write to cache
             try {
@@ -109,6 +109,7 @@ public class NexradDataManager {
                 os.close();
             } catch (Exception ex) {
                 Log.e(TAG, "error writing cached station list file", ex);
+                // Isn't necessarily a failure, so we don't push the notification out
             }
         }
         return results;
@@ -172,8 +173,8 @@ public class NexradDataManager {
                 }
             }
         } catch (Exception ex) {
-            Log.e(TAG,"data transfer error",ex);
-            throw new IllegalStateException("tgftp data transfer error", ex);
+            Log.e(TAG,"data transfer error["+station+":"+productCode+"]",ex);
+            throw new IllegalStateException("tgftp data transfer error ["+station+":"+productCode+"]", ex);
         }
         return results;
     }

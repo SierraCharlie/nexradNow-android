@@ -4,12 +4,13 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.support.v4.content.LocalBroadcastManager;
-import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
+import android.support.v4.content.LocalBroadcastManager;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.widget.Toast;
 import com.google.inject.Inject;
+import com.nexradnow.android.model.AppMessage;
 import com.nexradnow.android.model.LatLongCoordinates;
 import com.nexradnow.android.model.LocationChangeEvent;
 import com.nexradnow.android.model.NexradProduct;
@@ -19,8 +20,6 @@ import com.nexradnow.android.services.DataRefreshIntent;
 import com.nexradnow.android.services.EventBusProvider;
 import com.nexradnow.android.services.LocationFinder;
 import com.nexradnow.android.services.NexradDataManager;
-import com.nexradnow.android.views.RadarView;
-import de.greenrobot.event.EventBus;
 import roboguice.RoboGuice;
 import roboguice.activity.RoboActionBarActivity;
 
@@ -55,6 +54,10 @@ public class NexradView extends RoboActionBarActivity {
                     LatLongCoordinates centerPoint = (LatLongCoordinates)intent.getSerializableExtra("com.nexradnow.android.coords");
                     NexradUpdate updateEvent = new NexradUpdate(products, centerPoint);
                     eventBusProvider.getEventBus().post(updateEvent);
+                } else if (status == DataRefreshIntent.STATUS_ERROR) {
+                    String errorMessage = intent.getStringExtra("com.nexradnow.android.errmsg");
+                    AppMessage message = new AppMessage(errorMessage, AppMessage.Type.ERROR);
+                    eventBusProvider.getEventBus().post(message);
                 }
             }
         };
@@ -66,6 +69,12 @@ public class NexradView extends RoboActionBarActivity {
             eventBusProvider.getEventBus().post(new LocationChangeEvent(coords));
         }
 
+    }
+
+    public void onEvent(AppMessage message) {
+        // TODO: use different styles for errors vs. other types of messages
+        Toast msgToast = Toast.makeText(this, message.getMessage(), Toast.LENGTH_LONG);
+        msgToast.show();
     }
 
     public void onEvent(LocationChangeEvent locationChangeEvent) {

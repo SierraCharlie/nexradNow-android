@@ -142,5 +142,6 @@
     <orderEntry type="library" exported="" name="httpmime-4.2.6" level="project" />
     <orderEntry type="library" exported="" name="support-annotations-23.0.0" level="project" />
     <orderEntry type="library" exported="" name="play-services-maps-7.8.0" level="project" />
+    <orderEntry type="library" name="shapefilereader-1.0" level="project" />
   </component>
 </module>

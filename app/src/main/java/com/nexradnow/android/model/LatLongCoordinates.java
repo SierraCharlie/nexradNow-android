@@ -42,6 +42,16 @@ public class LatLongCoordinates implements Serializable {
         return Math.abs(distanceKm);
     }
 
+    /**
+     * Shift this point by the specified amounts
+     * @param latitudeChange
+     * @param longitudeChange
+     */
+    public void translate(double latitudeChange, double longitudeChange) {
+        this.latitude += latitudeChange;
+        this.longitude += longitudeChange;
+    }
+
     @Override
     public String toString() {
         return "LatLongCoordinates{" +

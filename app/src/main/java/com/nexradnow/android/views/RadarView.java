@@ -9,14 +9,23 @@ import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
 import com.google.inject.Inject;
+import com.nexradnow.android.app.R;
 import com.nexradnow.android.model.AppMessage;
 import com.nexradnow.android.model.LatLongCoordinates;
 import com.nexradnow.android.model.NexradProduct;
 import com.nexradnow.android.model.NexradStation;
 import com.nexradnow.android.model.NexradUpdate;
 import com.nexradnow.android.services.EventBusProvider;
+import org.nocrala.tools.gis.data.esri.shapefile.ShapeFileReader;
+import org.nocrala.tools.gis.data.esri.shapefile.header.ShapeFileHeader;
+import org.nocrala.tools.gis.data.esri.shapefile.shape.AbstractShape;
+import org.nocrala.tools.gis.data.esri.shapefile.shape.PointData;
+import org.nocrala.tools.gis.data.esri.shapefile.shape.ShapeType;
+import org.nocrala.tools.gis.data.esri.shapefile.shape.shapes.AbstractPolyShape;
+import org.nocrala.tools.gis.data.esri.shapefile.shape.shapes.PolygonShape;
 import roboguice.RoboGuice;
 
+import java.io.InputStream;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +37,11 @@ import ucar.nc2.Variable;
 
 
 /**
+ * This view has been superseded by a view that renders to an internal bitmap, to
+ * speed up pan/scroll operations.
+ *
+ * @deprecated
+ *
  * Created by hobsonm on 9/14/15.
  */
 public class RadarView extends View implements GestureDetector.OnGestureListener {
@@ -51,7 +65,6 @@ public class RadarView extends View implements GestureDetector.OnGestureListener
 
     protected Map<NexradStation,List<NexradProduct>> productDisplay;
     protected LatLongCoordinates selectedLocation;
-    protected LatLongCoordinates viewCenterPoint;
 
     // Helper to detect gestures
     private GestureDetectorCompat mDetector;
@@ -88,7 +101,6 @@ public class RadarView extends View implements GestureDetector.OnGestureListener
         Log.d(TAG, "update received: "+updateProducts.toString());
         this.productDisplay = updateProducts.getUpdateProduct();
         this.selectedLocation = updateProducts.getCenterPoint();
-        this.viewCenterPoint = selectedLocation;
         computeInitialScales();
         this.invalidate();
     }
@@ -114,10 +126,11 @@ public class RadarView extends View implements GestureDetector.OnGestureListener
         float latSpan = (float)Math.abs(max.getLatitude() - origin.getLatitude());
         float longSpan = (float)Math.abs(max.getLongitude() - origin.getLongitude());
         float latTranslate = -distanceY/(float)viewHeight * latSpan;
-        float longTranslate = -distanceX/(float)viewWidth * longSpan;
-        viewCenterPoint.setLatitude(viewCenterPoint.getLatitude()+latTranslate);
-        viewCenterPoint.setLongitude(viewCenterPoint.getLongitude()+longTranslate);
+        float longTranslate = distanceX/(float)viewWidth * longSpan;
+        // viewCenterPoint.translate(latTranslate, longTranslate);
         // TODO: translate max and origin lat/longs as well, prior to the redraw
+        max.translate(latTranslate,longTranslate);
+        origin.translate(latTranslate,longTranslate);
         this.invalidate();
         return true;
     }
@@ -272,6 +285,84 @@ public class RadarView extends View implements GestureDetector.OnGestureListener
             canvas.drawText(station.getIdentifier(), stationPoint.x + 12, stationPoint.y + 4, brush);
         }
         canvas.drawCircle(origin.x,origin.y,4,brush);
+        plotMap(canvas);
+    }
+
+    private void plotMap(Canvas canvas) {
+        try {
+            InputStream is = ctx.getResources().openRawResource(R.raw.cb_2014_us_state_20m);
+            ShapeFileReader sr = new ShapeFileReader(is);
+            ShapeFileHeader hdr = sr.getHeader();
+            switch (hdr.getShapeType()) {
+                case POLYGON:
+                case POLYGON_Z:
+                    break;
+                default:
+                    throw new IllegalStateException("shape file of unsupported type encountered: "
+                            + hdr.getShapeType().toString());
+            }
+            AbstractShape s;
+            int shapeCount = 0;
+            int includedShapes = 0;
+            while ((s = sr.next()) != null) {
+                AbstractPolyShape polygon = (AbstractPolyShape)s;
+                shapeCount++;
+                if (!shapeExcluded(polygon)) {
+                    includedShapes++;
+                    for (int part = 0; part < polygon.getNumberOfParts(); part++) {
+                        PointData[] points = polygon.getPointsOfPart(part);
+                        plotPolygonPoints(canvas, points);
+                    }
+                }
+            }
+            Log.d(TAG,"total shapes: "+shapeCount+" included: "+includedShapes);
+            is.close();
+        } catch (Exception ex) {
+            Log.e(TAG,"error while reading outline shape file", ex);
+            AppMessage message = new AppMessage(ex.toString(), AppMessage.Type.ERROR);
+            eventBusProvider.getEventBus().post(message);
+        }
+    }
+
+    /**
+     * Do some simple bounds checking to see if the polygon might possibly lie within our view window
+     * @param polygon
+     * @return
+     */
+    private boolean shapeExcluded(AbstractPolyShape polygon) {
+        double maxViewLongitude = max.getLongitude();
+        double minViewLongitude = origin.getLongitude();
+        double maxViewLatitude = origin.getLatitude();
+        double minViewLatitude = max.getLatitude();
+        boolean exclude = false;
+        if (polygon.getBoxMinX() > maxViewLongitude) {
+            // excluded
+            exclude =  true;
+        } else if (polygon.getBoxMaxX() < minViewLongitude) {
+            // excluded
+            exclude = true;
+        } else  if (polygon.getBoxMaxY() < minViewLatitude) {
+            // excluded
+            exclude = true;
+        } else if (polygon.getBoxMinY() > maxViewLatitude) {
+            exclude = true;
+        }
+        // This isn't completely true, but hopefully we will exclude the majority of shapes
+        return exclude;
+
+    }
+
+    private void plotPolygonPoints(Canvas canvas, PointData[] points) {
+        Paint brush = new Paint();
+        Point from = null;
+        Point to = null;
+        for (PointData eachSrcPoint : points) {
+            to = scaleLatLong(new LatLongCoordinates(eachSrcPoint.getY(),eachSrcPoint.getX()));
+            if (from != null) {
+                canvas.drawLine(from.x,from.y,to.x,to.y,brush);
+            }
+            from = to;
+        }
     }
 
     private void plotProduct(Canvas canvas, NexradProduct product) {

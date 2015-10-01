@@ -50,16 +50,18 @@ public class LocationFinder implements GoogleApiClient.ConnectionCallbacks, Goog
             LatLongCoordinates coords = new LatLongCoordinates(lastLocation.getLatitude(),lastLocation.getLongitude());
             //coords = new LatLongCoordinates(37.76,-99.96);
             eventBusProvider.getEventBus().post(new LocationChangeEvent(coords));
+        } else {
+            // TODO: fire an application error message to be displayed by parent activity
         }
     }
 
     @Override
     public void onConnectionSuspended(int i) {
-
+        // TODO: fire an application error message to be displayed by parent activity
     }
 
     @Override
     public void onConnectionFailed(ConnectionResult connectionResult) {
-
+        // TODO: fire an application error message to be displayed by parent activity
     }
 }
