@@ -1,6 +1,13 @@
 <resources>
     <string name="app_name">NexradNow</string>
 
-    <string name="hello_world">Hello world!</string>
     <string name="action_settings">Settings</string>
+    <string name="action_wxrefresh">Refresh Weather</string>
+
+    <string name="msg_refreshing_wx">Refreshing weather data</string>
+    <string name="msg_getting_station_list">Retrieving list of Nexrad stations</string>
+    <string name="msg_getting_data_for_station">Retrieving data for station</string>
+
+    <string name="err_no_location">no location - cannot proceed</string>
+
 </resources>

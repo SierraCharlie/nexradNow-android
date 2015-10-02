@@ -4,6 +4,7 @@ import android.app.IntentService;
 import android.content.Intent;
 import android.support.v4.content.LocalBroadcastManager;
 import com.google.inject.Inject;
+import com.nexradnow.android.app.R;
 import com.nexradnow.android.model.LatLongCoordinates;
 import com.nexradnow.android.model.NexradProduct;
 import com.nexradnow.android.model.NexradStation;
@@ -42,7 +43,12 @@ public class DataRefreshIntent extends RoboIntentService {
 
     protected void onHandleIntent(Intent intent) {
         try {
+            intent.setAction("com.nexradnow.android.newproduct");
+
             LatLongCoordinates coords = (LatLongCoordinates) intent.getSerializableExtra("com.nexradnow.android.coords");
+            intent.putExtra("com.nexradnow.android.status", STATUS_RUNNING);
+            intent.putExtra("com.nexradnow.android.statusmsg",getResources().getString(R.string.msg_getting_station_list));
+            LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
             List<NexradStation> srcStations = nexradDataManager.getNexradStations();
             // TODO: handle null or empty list due to download/cache failure
             List<NexradStation> stations = nexradDataManager.sortClosest(srcStations, coords);
@@ -52,11 +58,14 @@ public class DataRefreshIntent extends RoboIntentService {
             }
             HashMap<NexradStation, List<NexradProduct>> productMap = new HashMap<NexradStation, List<NexradProduct>>();
             for (int index = 0; index < 4; index++) {
+                intent.putExtra("com.nexradnow.android.statusmsg",
+                        getResources().getString(R.string.msg_getting_data_for_station)+" "
+                                +stations.get(index).getIdentifier());
+                LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
                 NexradStation station = stations.get(index);
                 List<NexradProduct> products = nexradDataManager.getNexradProducts("p38cr", station, 30);
                 productMap.put(station, products);
             }
-            intent.setAction("com.nexradnow.android.newproduct");
             intent.putExtra("com.nexradnow.android.productmap", productMap);
             intent.putExtra("com.nexradnow.android.status", STATUS_FINISHED);
             intent.putExtra("com.nexradnow.android.coords", coords);

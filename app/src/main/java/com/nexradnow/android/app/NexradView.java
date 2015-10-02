@@ -38,6 +38,12 @@ public class NexradView extends RoboActionBarActivity {
     @Inject
     protected NexradDataManager nexradDataManager;
 
+    /**
+     * Last valid location used by the app
+     */
+    protected LatLongCoordinates lastKnownLocation;
+    // TODO: save/restore this last known location via long-term app storage
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -55,9 +61,12 @@ public class NexradView extends RoboActionBarActivity {
                     NexradUpdate updateEvent = new NexradUpdate(products, centerPoint);
                     eventBusProvider.getEventBus().post(updateEvent);
                 } else if (status == DataRefreshIntent.STATUS_ERROR) {
-                    String errorMessage = intent.getStringExtra("com.nexradnow.android.errmsg");
-                    AppMessage message = new AppMessage(errorMessage, AppMessage.Type.ERROR);
-                    eventBusProvider.getEventBus().post(message);
+                    postMessage(intent.getStringExtra("com.nexradnow.android.errmsg"), AppMessage.Type.ERROR);
+                } else if (status == DataRefreshIntent.STATUS_RUNNING) {
+                    String msgText = intent.getStringExtra("com.nexradnow.android.statusmsg");
+                    if (msgText != null) {
+                        postMessage(msgText, AppMessage.Type.PROGRESS);
+                    }
                 }
             }
         };
@@ -71,16 +80,41 @@ public class NexradView extends RoboActionBarActivity {
 
     }
 
+
+    protected Toast prevToast;
+    protected AppMessage.Type prevToastType;
+
     public void onEvent(AppMessage message) {
         // TODO: use different styles for errors vs. other types of messages
-        Toast msgToast = Toast.makeText(this, message.getMessage(), Toast.LENGTH_LONG);
+        int duration = Toast.LENGTH_LONG;
+        if (message.getType() == AppMessage.Type.ERROR) {
+            duration = Toast.LENGTH_LONG;
+        } else if (message.getType() == AppMessage.Type.INFO) {
+            duration = Toast.LENGTH_SHORT;
+        } else if (message.getType() == AppMessage.Type.PROGRESS) {
+            if (prevToast != null) {
+                if (prevToastType == AppMessage.Type.PROGRESS) {
+                    prevToast.cancel();
+                }
+            }
+        }
+
+        Toast msgToast = Toast.makeText(this, message.getMessage(), duration);
         msgToast.show();
+        prevToast = msgToast;
+        prevToastType = message.getType();
     }
 
     public void onEvent(LocationChangeEvent locationChangeEvent) {
         // Start the initial refresh
+        postMessage (R.string.msg_refreshing_wx, AppMessage.Type.INFO);
+        lastKnownLocation = locationChangeEvent.getCoordinates();
+        requestWxForLocation(locationChangeEvent.getCoordinates());
+    }
+
+    public void requestWxForLocation (LatLongCoordinates coords) {
         Intent intent = new Intent(Intent.ACTION_SYNC, null, this, DataRefreshIntent.class);
-        intent.putExtra("com.nexradnow.android.coords",locationChangeEvent.getCoordinates());
+        intent.putExtra("com.nexradnow.android.coords",coords);
         startService(intent);
     }
 
@@ -103,6 +137,30 @@ public class NexradView extends RoboActionBarActivity {
             return true;
         }
 
+        if (id == R.id.action_wxrefresh) {
+            refreshWeather();
+            return true;
+        }
+
         return super.onOptionsItemSelected(item);
+    }
+
+    private void refreshWeather() {
+        if (lastKnownLocation != null) {
+            postMessage (R.string.msg_refreshing_wx, AppMessage.Type.INFO);
+            requestWxForLocation(lastKnownLocation);
+        } else {
+            postMessage (R.string.err_no_location, AppMessage.Type.ERROR);
+        }
+
+    }
+
+    private void postMessage(int msgId, AppMessage.Type msgType) {
+        String msgText = getResources().getString(msgId);
+        postMessage(msgText,msgType);
+    }
+
+    private void postMessage(String msgText, AppMessage.Type msgType) {
+        eventBusProvider.getEventBus().post(new AppMessage(msgText, msgType));
     }
 }

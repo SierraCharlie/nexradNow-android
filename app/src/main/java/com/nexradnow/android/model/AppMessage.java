@@ -21,4 +21,9 @@ public class AppMessage {
     public void setMessage(String message) {
         this.message = message;
     }
+
+    public Type getType() {
+        return type;
+    }
+
 }

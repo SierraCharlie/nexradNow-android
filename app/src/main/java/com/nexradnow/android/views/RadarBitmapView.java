@@ -78,10 +78,41 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
      */
     private int viewWidth;
 
+    /**
+     * Backing bitmap, where the graphics are rendered
+     */
     protected Bitmap backingBitmap;
+
+    /**
+     * The lat/long area covered by the backing bitmap
+     */
     protected LatLongRect bitmapLatLongRect;
+
+    /**
+     * The size (in pixels) of the entire backing bitmap
+     */
     protected Rect bitmapPixelSize;
+
+    /**
+     * The subsection of the backing bitmap that is currently being displayed
+     */
     protected Rect bitmapClipRect;
+
+    /**
+     * The current display density, used to scale pixel sizes
+     */
+    protected float displayDensity;
+
+    // Paint objects for various operations
+    protected Paint drawPaint; // onDraw
+
+    protected Paint homePointPaint; // used to draw home point
+
+    protected Paint productPaint; // used to draw product
+
+    protected Paint stationPaint; // used to draw station locations
+
+    protected Paint mapPaint; // used to draw map
 
     public RadarBitmapView(Context context) {
         super(context);
@@ -102,6 +133,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         RoboGuice.getInjector(getContext()).injectMembers(this);
         eventBusProvider.getEventBus().register(this);
         mDetector = new GestureDetectorCompat(ctx,this);
+        displayDensity = getResources().getDisplayMetrics().density;
     }
 
     @Override
@@ -119,6 +151,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
 
     @Override
     public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
+        // Shift the clipping rect around to force a different part of the backing bitmap to be displayed
         if (distanceX > 0) {
             // move to the right
             bitmapClipRect.right += distanceX;
@@ -191,7 +224,11 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
             return;
         }
         Rect destRect = new Rect(0,0,viewWidth,viewHeight);
-        Paint brush = new Paint();
+        if (drawPaint == null) {
+            drawPaint = new Paint();
+        }
+        Paint brush = drawPaint;
+
         if (bitmapClipRect == null) {
             int viewXOffset = (bitmapPixelSize.width() - viewWidth) / 2;
             int viewYOffset = (bitmapPixelSize.height() - viewHeight) / 2;
@@ -201,6 +238,16 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         canvas.drawBitmap(backingBitmap, bitmapClipRect, destRect, brush);
 
     }
+
+    /**
+     * Convenience function to convert device-independent pixels to correct underlying pixel count
+     * @param dp
+     * @return
+     */
+    public int scalePixels (int dp) {
+        return (int)((float)dp * displayDensity + 0.5f);
+    }
+
     /**
      * Called from event bus when a new collection of radar data is received for display
      * @param updateProducts
@@ -229,9 +276,12 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     }
 
     private void drawHomePoint(Canvas canvas, LatLongRect latLongRect, Rect pixelSize, LatLongCoordinates location) {
-        Paint brush = new Paint();
+        if (homePointPaint == null) {
+            homePointPaint = new Paint();
+        }
+        Paint brush = homePointPaint;
         Point locationPoint = scaleCoordinate(location, latLongRect, pixelSize);
-        canvas.drawCircle(locationPoint.x,locationPoint.y,4,brush);
+        canvas.drawCircle(locationPoint.x,locationPoint.y,scalePixels(3),brush);
     }
 
     private Point scaleCoordinate (LatLongCoordinates coords, LatLongRect coordRect, Rect pixelRect) {
@@ -246,11 +296,15 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
 
     private void plotStation(Canvas canvas, LatLongRect latLongRect, Rect pixelSize,
                              NexradStation station, boolean hasData) {
-        // TODO: declare reusable Paint - probably should do this throughout the code
-        Paint brush = new Paint();
+        if (stationPaint == null) {
+            stationPaint = new Paint();
+            stationPaint.setTextSize(scalePixels(10));
+        }
+        Paint brush = stationPaint;
         Point stationPoint = scaleCoordinate(station.getCoords(), latLongRect, pixelSize);
-        canvas.drawCircle(stationPoint.x, stationPoint.y, 10, brush);
-        canvas.drawText(station.getIdentifier(), stationPoint.x + 12, stationPoint.y + 4, brush);
+        canvas.drawCircle(stationPoint.x, stationPoint.y, scalePixels(7), brush);
+        canvas.drawText(station.getIdentifier(),
+                stationPoint.x + scalePixels(12), stationPoint.y + scalePixels(4), brush);
     }
 
 
@@ -266,7 +320,9 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
             if (!radarData.isEmpty()) {
                 for (NexradProduct radarProduct : radarData) {
                     LatLongRect radarDataRect = computeEnclosingRect(radarProduct);
-                    bitmapLatLongRect.union(radarDataRect);
+                    if (radarDataRect != null) {
+                        bitmapLatLongRect.union(radarDataRect);
+                    }
                 }
             }
         }
@@ -386,7 +442,10 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
                     float ptLonStart = (float)x/232.0f*lonSpan + lonOrigin;
                     LatLongCoordinates origin = new LatLongCoordinates(ptLatStart, ptLonStart);
                     LatLongCoordinates extent = new LatLongCoordinates(ptLatStart+latSpan/232.0f,ptLonStart+lonSpan/232.0f);
-                    Paint cellBrush = new Paint();
+                    if (productPaint == null) {
+                        productPaint = new Paint();
+                    }
+                    Paint cellBrush = productPaint;
                     cellBrush.setColor(color);
                     Rect paintRect = new Rect();
                     Point ptOrigin = scaleCoordinate(origin, latLongRect, pixelSize);
@@ -413,6 +472,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
      */
     public int getColor(float power)
     {
+        // TODO: create different strategies for generating colors so we can (hopefully) plot other products someday
         float H = (1.0f-power) * 120f; // Hue (note 0.4 = Green, see huge chart below)
         float S = 0.9f; // Saturation
         float B = 0.9f; // Brightness
@@ -488,7 +548,11 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     }
 
     private void plotPolygonPoints(Canvas canvas, LatLongRect latLongRect, Rect pixelSize, PointData[] points) {
-        Paint brush = new Paint();
+        if (mapPaint == null) {
+            mapPaint = new Paint();
+            mapPaint.setStrokeWidth(scalePixels(2));
+        }
+        Paint brush = mapPaint;
         Point from = null;
         Point to = null;
         for (PointData eachSrcPoint : points) {
