@@ -152,7 +152,8 @@ public class NexradDataManager {
             FTPFile[] files = ftpClient.listFiles();
             Calendar nowCal = Calendar.getInstance();
             for (FTPFile file : files) {
-                if (file.getTimestamp().getTimeInMillis()>nowCal.getTimeInMillis()-ageMaxMinutes*60*1000) {
+                if ((file.getTimestamp().getTimeInMillis()>nowCal.getTimeInMillis()-ageMaxMinutes*60*1000)&&
+                        (!"sn.last".equals(file.getName()))) {
                         // qualifies!
                         InputStream stream = ftpClient.retrieveFileStream(file.getName());
                         byte[] productBytes = null;
@@ -172,6 +173,19 @@ public class NexradDataManager {
                         results.add(product);
                 }
             }
+            // Sort so that items in list are in order of most recent -> least recent
+            Comparator<NexradProduct> comparator = new Comparator<NexradProduct>() {
+                @Override
+                public int compare(NexradProduct lhs, NexradProduct rhs) {
+                    if (lhs.getTimestamp().before(rhs.getTimestamp())) {
+                        return 1;
+                    } else if (lhs.getTimestamp().after(rhs.getTimestamp())) {
+                        return -1;
+                    }
+                    return 0;
+                }
+            };
+            Collections.sort(results,comparator);
         } catch (Exception ex) {
             Log.e(TAG,"data transfer error["+station+":"+productCode+"]",ex);
             throw new IllegalStateException("tgftp data transfer error ["+station+":"+productCode+"]", ex);

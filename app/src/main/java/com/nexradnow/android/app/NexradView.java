@@ -23,6 +23,7 @@ import com.nexradnow.android.services.NexradDataManager;
 import roboguice.RoboGuice;
 import roboguice.activity.RoboActionBarActivity;
 
+import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 
@@ -35,14 +36,17 @@ public class NexradView extends RoboActionBarActivity {
     @Inject
     protected EventBusProvider eventBusProvider;
 
-    @Inject
-    protected NexradDataManager nexradDataManager;
+    protected Toast prevToast;
+    protected AppMessage.Type prevToastType;
 
-    /**
-     * Last valid location used by the app
-     */
-    protected LatLongCoordinates lastKnownLocation;
-    // TODO: save/restore this last known location via long-term app storage
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+    }
+    @Override
+    protected void onRestoreInstanceState(Bundle savedInstanceState) {
+        super.onRestoreInstanceState(savedInstanceState);
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,29 +54,6 @@ public class NexradView extends RoboActionBarActivity {
         RoboGuice.injectMembers(this, this);
         setContentView(R.layout.activity_nexrad_view);
         eventBusProvider.getEventBus().register(this);
-        BroadcastReceiver receiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                int status = intent.getIntExtra("com.nexradnow.android.status",-1);
-                if (status==DataRefreshIntent.STATUS_FINISHED) {
-                    Map<NexradStation,List<NexradProduct>> products =
-                            (Map<NexradStation,List<NexradProduct>>)intent.getSerializableExtra("com.nexradnow.android.productmap");
-                    LatLongCoordinates centerPoint = (LatLongCoordinates)intent.getSerializableExtra("com.nexradnow.android.coords");
-                    NexradUpdate updateEvent = new NexradUpdate(products, centerPoint);
-                    eventBusProvider.getEventBus().post(updateEvent);
-                } else if (status == DataRefreshIntent.STATUS_ERROR) {
-                    postMessage(intent.getStringExtra("com.nexradnow.android.errmsg"), AppMessage.Type.ERROR);
-                } else if (status == DataRefreshIntent.STATUS_RUNNING) {
-                    String msgText = intent.getStringExtra("com.nexradnow.android.statusmsg");
-                    if (msgText != null) {
-                        postMessage(msgText, AppMessage.Type.PROGRESS);
-                    }
-                }
-            }
-        };
-        IntentFilter filter = new IntentFilter();
-        filter.addAction("com.nexradnow.android.newproduct");
-        LocalBroadcastManager.getInstance(this).registerReceiver(receiver, filter);
         LatLongCoordinates coords = locationFinder.getCurrentCoords();
         if (coords != null) {
             eventBusProvider.getEventBus().post(new LocationChangeEvent(coords));
@@ -80,9 +61,6 @@ public class NexradView extends RoboActionBarActivity {
 
     }
 
-
-    protected Toast prevToast;
-    protected AppMessage.Type prevToastType;
 
     public void onEvent(AppMessage message) {
         // TODO: use different styles for errors vs. other types of messages
@@ -105,18 +83,6 @@ public class NexradView extends RoboActionBarActivity {
         prevToastType = message.getType();
     }
 
-    public void onEvent(LocationChangeEvent locationChangeEvent) {
-        // Start the initial refresh
-        postMessage (R.string.msg_refreshing_wx, AppMessage.Type.INFO);
-        lastKnownLocation = locationChangeEvent.getCoordinates();
-        requestWxForLocation(locationChangeEvent.getCoordinates());
-    }
-
-    public void requestWxForLocation (LatLongCoordinates coords) {
-        Intent intent = new Intent(Intent.ACTION_SYNC, null, this, DataRefreshIntent.class);
-        intent.putExtra("com.nexradnow.android.coords",coords);
-        startService(intent);
-    }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -138,29 +104,10 @@ public class NexradView extends RoboActionBarActivity {
         }
 
         if (id == R.id.action_wxrefresh) {
-            refreshWeather();
+            ((NexradApp)getApplication()).refreshWeather();
             return true;
         }
 
         return super.onOptionsItemSelected(item);
-    }
-
-    private void refreshWeather() {
-        if (lastKnownLocation != null) {
-            postMessage (R.string.msg_refreshing_wx, AppMessage.Type.INFO);
-            requestWxForLocation(lastKnownLocation);
-        } else {
-            postMessage (R.string.err_no_location, AppMessage.Type.ERROR);
-        }
-
-    }
-
-    private void postMessage(int msgId, AppMessage.Type msgType) {
-        String msgText = getResources().getString(msgId);
-        postMessage(msgText,msgType);
-    }
-
-    private void postMessage(String msgText, AppMessage.Type msgType) {
-        eventBusProvider.getEventBus().post(new AppMessage(msgText, msgType));
     }
 }

@@ -22,6 +22,7 @@ import com.nexradnow.android.model.LatLongRect;
 import com.nexradnow.android.model.NexradProduct;
 import com.nexradnow.android.model.NexradStation;
 import com.nexradnow.android.model.NexradUpdate;
+import com.nexradnow.android.model.ProductRequestMessage;
 import com.nexradnow.android.services.EventBusProvider;
 import org.nocrala.tools.gis.data.esri.shapefile.ShapeFileReader;
 import org.nocrala.tools.gis.data.esri.shapefile.header.ShapeFileHeader;
@@ -35,6 +36,10 @@ import ucar.nc2.NetcdfFile;
 import ucar.nc2.Variable;
 
 import java.io.InputStream;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -62,6 +67,11 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
      * Collection of Nexrad data that is to be displayed
      */
     private Map<NexradStation, List<NexradProduct>> productDisplay;
+
+    /**
+     * Computed oldest timestamp of data on display
+     */
+    private Calendar dataTimestamp;
 
     /**
      * Location selected by user (typically current physical location)
@@ -152,6 +162,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     @Override
     public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
         // Shift the clipping rect around to force a different part of the backing bitmap to be displayed
+        if (bitmapClipRect==null) { return true; }
         if (distanceX > 0) {
             // move to the right
             bitmapClipRect.right += distanceX;
@@ -206,6 +217,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         super.onSizeChanged(w, h, oldw, oldh);
         viewHeight = h;
         viewWidth = w;
+        eventBusProvider.getEventBus().post(new ProductRequestMessage());
     }
 
     @Override
@@ -237,6 +249,42 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         }
         canvas.drawBitmap(backingBitmap, bitmapClipRect, destRect, brush);
 
+        // Layer timestamp on graphic
+        DateFormat fmt = new SimpleDateFormat("yyyy-MM-dd HH:mm");
+        String timestamp = fmt.format(dataTimestamp.getTime());
+        drawTimestamp(canvas,timestamp, Color.GREEN);
+
+    }
+
+    /**
+     * Paint the data timestamp on the bottom left of the graphic
+     *
+     * @param canvas object to render to
+     * @param text timestamp text to display
+     * @param backgroundColor color to use for the timestamp box
+     */
+    private void drawTimestamp(Canvas canvas, String text, int backgroundColor) {
+        Paint timestampPaint = new Paint();
+        timestampPaint.setTextSize(scalePixels(20));
+        timestampPaint.setColor(backgroundColor);
+        Rect stampBounds = new Rect();
+        timestampPaint.getTextBounds(text,0,text.length(),stampBounds);
+        stampBounds.bottom += scalePixels(20);
+        stampBounds.right += scalePixels(20);
+        RectF roundRect = new RectF(stampBounds);
+        int yPos = viewHeight - stampBounds.height() - scalePixels(30);
+        roundRect.offsetTo(scalePixels(10),yPos);
+        canvas.drawRoundRect(roundRect,scalePixels(10),scalePixels(10),timestampPaint);
+        timestampPaint.setColor(Color.parseColor("black"));
+        timestampPaint.setStyle(Paint.Style.STROKE);
+        float defaultStrokeWidth = timestampPaint.getStrokeWidth();
+        timestampPaint.setStrokeWidth(scalePixels(2));
+        canvas.drawRoundRect(roundRect,scalePixels(10),scalePixels(10),timestampPaint);
+        timestampPaint.setStrokeWidth(defaultStrokeWidth);
+        timestampPaint.setStyle(Paint.Style.FILL_AND_STROKE);
+        float textYPos = roundRect.bottom - scalePixels(10);
+        canvas.drawText(text,roundRect.left+scalePixels(10),textYPos,timestampPaint);
+
     }
 
     /**
@@ -256,11 +304,21 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         Log.d(TAG, "update received: " + updateProducts.toString());
         this.productDisplay = updateProducts.getUpdateProduct();
         this.selectedLocation = updateProducts.getCenterPoint();
+        regenerateBitmap();
+        this.invalidate();
+    }
+
+    protected void regenerateBitmap() {
         createBackingBitmap();
 
         Canvas bitmapCanvas = new Canvas(backingBitmap);
+        Calendar oldestTimestamp = null;
         for (NexradStation station : productDisplay.keySet()) {
             if ((productDisplay.get(station)!=null)&&(!productDisplay.get(station).isEmpty())) {
+                Calendar thisTimestamp = productDisplay.get(station).get(0).getTimestamp();
+                if ((oldestTimestamp == null)||(thisTimestamp.before(oldestTimestamp))) {
+                    oldestTimestamp = thisTimestamp;
+                }
                 plotProduct(bitmapCanvas, bitmapLatLongRect, bitmapPixelSize, productDisplay.get(station).get(0));
             }
         }
@@ -268,11 +326,10 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
             boolean stationHasData = (productDisplay.get(station)!=null)&&(!productDisplay.get(station).isEmpty());
             plotStation(bitmapCanvas, bitmapLatLongRect, bitmapPixelSize, station, stationHasData);
         }
-        drawMap(bitmapCanvas, bitmapLatLongRect, bitmapPixelSize, updateProducts);
+        drawMap(bitmapCanvas, bitmapLatLongRect, bitmapPixelSize);
 
         drawHomePoint(bitmapCanvas, bitmapLatLongRect, bitmapPixelSize, selectedLocation);
-
-        this.invalidate();
+        dataTimestamp = oldestTimestamp;
     }
 
     private void drawHomePoint(Canvas canvas, LatLongRect latLongRect, Rect pixelSize, LatLongCoordinates location) {
@@ -483,7 +540,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         return Color.HSVToColor(hsv);
     }
 
-    private void drawMap(Canvas canvas, LatLongRect latLongRect, Rect pixelSize, NexradUpdate updateProducts) {
+    private void drawMap(Canvas canvas, LatLongRect latLongRect, Rect pixelSize) {
         try {
             InputStream is = ctx.getResources().openRawResource(R.raw.cb_2014_us_state_20m);
             ShapeFileReader sr = new ShapeFileReader(is);
