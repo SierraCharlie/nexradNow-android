@@ -19,6 +19,7 @@ import com.nexradnow.android.model.NexradUpdate;
 import com.nexradnow.android.services.DataRefreshIntent;
 import com.nexradnow.android.services.EventBusProvider;
 import com.nexradnow.android.services.LocationFinder;
+import com.nexradnow.android.services.LocationInfoIntent;
 import com.nexradnow.android.services.NexradDataManager;
 import roboguice.RoboGuice;
 import roboguice.activity.RoboActionBarActivity;
@@ -54,11 +55,11 @@ public class NexradView extends RoboActionBarActivity {
         RoboGuice.injectMembers(this, this);
         setContentView(R.layout.activity_nexrad_view);
         eventBusProvider.getEventBus().register(this);
-        LatLongCoordinates coords = locationFinder.getCurrentCoords();
-        if (coords != null) {
-            eventBusProvider.getEventBus().post(new LocationChangeEvent(coords));
-        }
-
+        // LatLongCoordinates coords = locationFinder.getCurrentCoords();
+        // if (coords != null) {
+        //     eventBusProvider.getEventBus().post(new LocationChangeEvent(coords));
+        // }
+        ((NexradApp)getApplication()).requestCurrentLocation();
     }
 
 
@@ -100,6 +101,7 @@ public class NexradView extends RoboActionBarActivity {
 
         //noinspection SimplifiableIfStatement
         if (id == R.id.action_settings) {
+            startSettings();
             return true;
         }
 
@@ -110,4 +112,11 @@ public class NexradView extends RoboActionBarActivity {
 
         return super.onOptionsItemSelected(item);
     }
+
+    private void startSettings() {
+        Intent intent = new Intent(this, SettingsActivity.class);
+        startActivity(intent);
+    }
+
+
 }

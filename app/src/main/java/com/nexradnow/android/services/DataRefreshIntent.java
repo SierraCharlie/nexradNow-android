@@ -1,10 +1,15 @@
 package com.nexradnow.android.services;
 
 import android.app.IntentService;
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.preference.PreferenceManager;
 import android.support.v4.content.LocalBroadcastManager;
 import com.google.inject.Inject;
 import com.nexradnow.android.app.R;
+import com.nexradnow.android.app.SettingsActivity;
+import com.nexradnow.android.exception.NexradNowException;
 import com.nexradnow.android.model.LatLongCoordinates;
 import com.nexradnow.android.model.NexradProduct;
 import com.nexradnow.android.model.NexradStation;
@@ -32,6 +37,11 @@ public class DataRefreshIntent extends RoboIntentService {
 
     private static final String TAG = "DownloadService";
 
+    public static final String ACTION = "com.nexradnow.android.newproduct";
+
+    @Inject
+    protected Context ctx;
+
     @Inject
     protected NexradDataManager nexradDataManager;
 
@@ -52,17 +62,21 @@ public class DataRefreshIntent extends RoboIntentService {
             List<NexradStation> srcStations = nexradDataManager.getNexradStations();
             // TODO: handle null or empty list due to download/cache failure
             List<NexradStation> stations = nexradDataManager.sortClosest(srcStations, coords);
+            SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(ctx);
+            int maxDistance = Integer.parseInt(sharedPref.getString(SettingsActivity.KEY_PREF_NEXRAD_STATIONDISTANCE,"160"));
             // Pick the four closest stations IF the distance to the nearest is less than 350 km.
-            if (coords.distanceTo(stations.get(0).getCoords()) > 350.0) {
-                throw new DataRefreshIntentException("No Nexrad stations within 350 km");
+            if (coords.distanceTo(stations.get(0).getCoords()) > maxDistance) {
+                throw new DataRefreshIntentException("No Nexrad stations within "+maxDistance+" km");
             }
             HashMap<NexradStation, List<NexradProduct>> productMap = new HashMap<NexradStation, List<NexradProduct>>();
-            for (int index = 0; index < 4; index++) {
+            for (NexradStation station : stations) {
+                if (coords.distanceTo(station.getCoords()) > maxDistance) {
+                    continue;
+                }
                 intent.putExtra("com.nexradnow.android.statusmsg",
-                        getResources().getString(R.string.msg_getting_data_for_station)+" "
-                                +stations.get(index).getIdentifier());
+                        getResources().getString(R.string.msg_getting_data_for_station) + " "
+                                + station.getIdentifier());
                 LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
-                NexradStation station = stations.get(index);
                 List<NexradProduct> products = nexradDataManager.getNexradProducts("p38cr", station, 30);
                 productMap.put(station, products);
             }
@@ -75,8 +89,10 @@ public class DataRefreshIntent extends RoboIntentService {
             intent.setAction("com.nexradnow.android.newproduct");
             if (ex instanceof DataRefreshIntentException) {
                 intent.putExtra("com.nexradnow.android.errmsg", ex.getMessage());
+            } else if (ex instanceof NexradNowException ){
+                intent.putExtra("com.nexradnow.android.errmsg", ex.getMessage());
             } else {
-                intent.putExtra("com.nexradnow.android.errmst", ex.toString());
+                intent.putExtra("com.nexradnow.android.errmsg", ex.toString());
             }
             intent.putExtra("com.nexradnow.android.status", STATUS_ERROR);
             LocalBroadcastManager.getInstance(this).sendBroadcast(intent);

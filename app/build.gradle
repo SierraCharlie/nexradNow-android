@@ -18,7 +18,7 @@ android {
 
     defaultConfig {
         applicationId "com.nexradnow.android.app"
-        minSdkVersion 9
+        minSdkVersion 11
         targetSdkVersion 23
         versionCode 1
         versionName "1.0"
@@ -76,4 +76,10 @@ dependencies {
     compile 'commons-io:commons-io:2.4'
     // netCDF
     compile 'edu.ucar:netcdf4:4.5.5'
+    // validation (email)
+    compile ('commons-validator:commons-validator:1.4.1') {
+        exclude group: 'commons-beanutils', module: 'commons-beanutils'
+        exclude group: 'commons-collections', module: 'commons-collections'
+    }
+    compile 'commons-beanutils:commons-beanutils-core:1.8.3'
 }

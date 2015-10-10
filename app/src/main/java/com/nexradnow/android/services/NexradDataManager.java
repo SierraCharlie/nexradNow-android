@@ -1,8 +1,13 @@
 package com.nexradnow.android.services;
 
 import android.content.Context;
+import android.content.SharedPreferences;
+import android.preference.PreferenceManager;
 import android.util.Log;
 import com.google.inject.Inject;
+import com.nexradnow.android.app.R;
+import com.nexradnow.android.app.SettingsActivity;
+import com.nexradnow.android.exception.NexradNowException;
 import com.nexradnow.android.model.LatLongCoordinates;
 import com.nexradnow.android.model.NexradProduct;
 import com.nexradnow.android.model.NexradStation;
@@ -32,8 +37,10 @@ import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.List;
 import java.util.TimeZone;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Created by hobsonm on 9/15/15.
@@ -50,10 +57,13 @@ public class NexradDataManager {
     public final static String TAG="NEXRADDATA";
     protected final static String CACHESTATIONFILE = "nxstations.obj";
 
+
+
     public List<NexradStation> getNexradStations () {
         List<NexradStation> results = null;
         File cachedList = new File(ctx.getCacheDir(),CACHESTATIONFILE);
-        if (cachedList.exists()&&cachedList.canRead()) {
+        if (cachedList.exists()&&cachedList.canRead()&&
+                (System.currentTimeMillis()<((long)cachedList.lastModified()+TimeUnit.DAYS.toMillis(30)))) {
             // Load from cache
             try {
                 InputStream fis = new FileInputStream(cachedList);
@@ -67,8 +77,10 @@ public class NexradDataManager {
             }
         }
         if (results == null) {
+            SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(ctx);
             // Fetch list of stations at: http://www.ncdc.noaa.gov/homr/file/nexrad-stations.txt
-            String urlString = "http://www.ncdc.noaa.gov/homr/file/nexrad-stations.txt";
+            String urlString = sharedPref.getString(SettingsActivity.KEY_PREF_NEXRAD_STATIONLIST_URL,
+                    ctx.getString(R.string.pref_nexrad_stationlist_default));
             try {
                 URL url = new URL(urlString);
                 URLConnection conn = url.openConnection();
@@ -131,23 +143,29 @@ public class NexradDataManager {
     }
 
     public List<NexradProduct> getNexradProducts(String productCode, NexradStation station, int ageMaxMinutes) {
+        SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(ctx);
         List<NexradProduct> results = new ArrayList<NexradProduct>();
-        // TODO: configure base FTP path/pattern dynamically
-        String ftpPath = "ftp://tgftp.nws.noaa.gov/SL.us008001/DF.of/DC.radar/DS."
+        String ftpHost = sharedPref.getString(SettingsActivity.KEY_PREF_NEXRAD_FTPHOST,
+                ctx.getString(R.string.pref_nexrad_ftphost_default));
+        String ftpDir = sharedPref.getString(SettingsActivity.KEY_PREF_NEXRAD_FTPDIR,
+                ctx.getString(R.string.pref_nexrad_ftpdir_default));
+        String ftpProductStationPath = "/DS."
                 +productCode+"/SI."+station.getIdentifier().toLowerCase();
-        String ftpHost = "tgftp.nws.noaa.gov";
-        String ftpDir = "/SL.us008001/DF.of/DC.radar/DS."
-                +productCode+"/SI."+station.getIdentifier().toLowerCase();
+        String eMailAddress = sharedPref.getString(SettingsActivity.KEY_PREF_NEXRAD_EMAILADDRESS,
+                ctx.getString(R.string.pref_nexrad_emailaddress_default));
+        if ((eMailAddress == null)||(eMailAddress.isEmpty())) {
+            throw new NexradNowException("No email address configured in settings");
+        }
         // Get listing of available items
         FTPClientConfig conf = new FTPClientConfig(FTPClientConfig.SYST_UNIX);
         conf.setServerTimeZoneId("UTC");
         FTPClient ftpClient = new FTPClient();
         ftpClient.configure(conf);
         try {
-            ftpClient.connect(InetAddress.getByName("tgftp.nws.noaa.gov"));
+            ftpClient.connect(InetAddress.getByName(ftpHost));
             ftpClient.enterLocalPassiveMode();
-            ftpClient.login("anonymous", "nexradnow");
-            ftpClient.changeWorkingDirectory(ftpDir);
+            ftpClient.login("anonymous", eMailAddress);
+            ftpClient.changeWorkingDirectory(ftpDir+ftpProductStationPath);
             ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
             FTPFile[] files = ftpClient.listFiles();
             Calendar nowCal = Calendar.getInstance();

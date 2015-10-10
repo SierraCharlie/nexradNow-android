@@ -10,4 +10,22 @@
 
     <string name="err_no_location">no location - cannot proceed</string>
 
+    <string name="pref_nexrad_stationlist_title">Nexrad station list URL</string>
+    <string name="pref_nexrad_stationlist_summ">List of Nexrad stations and locations</string>
+    <string name="pref_nexrad_stationlist_default">http://www.ncdc.noaa.gov/homr/file/nexrad-stations.txt</string>
+
+    <string name="pref_nexrad_ftphost_title">Nexrad FTP Host</string>
+    <string name="pref_nexrad_ftphost_summ">Hostname for Nexrad Radar Operations Center FTP site</string>
+    <string name="pref_nexrad_ftphost_default">tgftp.nws.noaa.gov</string>
+
+    <string name="pref_nexrad_ftpdir_title">Nexrad FTP Directory</string>
+    <string name="pref_nexrad_ftpdir_summ">Directory for Nexrad Radar Operations Center data</string>
+    <string name="pref_nexrad_ftpdir_default">/SL.us008001/DF.of/DC.radar</string>
+
+    <string name="pref_nexrad_emailaddress_title">User\'s Email Address</string>
+    <string name="pref_nexrad_emailaddress_summ">Provide email address for use during FTP server login</string>
+    <string name="pref_nexrad_emailaddress_default"></string>
+
+    <string name="pref_nexrad_stationdistance_title">Nexrad stations distance</string>
+    <string name="pref_nexrad_stationdistance_summ">Include Nexrad stations within this distance of your location</string>
 </resources>

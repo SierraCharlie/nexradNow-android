@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+    <EditTextPreference
+            android:key="pref_nexrad_stationlist_url"
+            android:title="@string/pref_nexrad_stationlist_title"
+            android:summary="@string/pref_nexrad_stationlist_summ"
+            android:defaultValue="@string/pref_nexrad_stationlist_default" />
+    <EditTextPreference
+            android:key="pref_nexrad_ftphost"
+            android:title="@string/pref_nexrad_ftphost_title"
+            android:summary="@string/pref_nexrad_ftphost_summ"
+            android:defaultValue="@string/pref_nexrad_ftphost_default" />
+    <EditTextPreference
+            android:key="pref_nexrad_ftpdir"
+            android:title="@string/pref_nexrad_ftpdir_title"
+            android:summary="@string/pref_nexrad_ftpdir_summ"
+            android:defaultValue="@string/pref_nexrad_ftpdir_default" />
+    <EditTextPreference
+            android:key="pref_nexrad_emailaddress"
+            android:title="@string/pref_nexrad_emailaddress_title"
+            android:summary="@string/pref_nexrad_emailaddress_summ"
+            android:defaultValue="@string/pref_nexrad_emailaddress_default" />
+
+    <ListPreference
+        android:key="pref_nexrad_stationdistance"
+        android:entries="@array/rangeLabels"
+        android:entryValues="@array/rangeKm"
+        android:title="@string/pref_nexrad_stationdistance_title"
+        android:summary="@string/pref_nexrad_stationdistance_summ"
+        android:defaultValue="160"/>
+
+</PreferenceScreen>

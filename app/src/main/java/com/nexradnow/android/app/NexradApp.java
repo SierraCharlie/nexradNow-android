@@ -18,6 +18,7 @@ import com.nexradnow.android.model.NexradUpdate;
 import com.nexradnow.android.model.ProductRequestMessage;
 import com.nexradnow.android.services.DataRefreshIntent;
 import com.nexradnow.android.services.EventBusProvider;
+import com.nexradnow.android.services.LocationInfoIntent;
 import roboguice.RoboGuice;
 
 import java.util.List;
@@ -54,24 +55,40 @@ public class NexradApp  extends MultiDexApplication {
             @Override
             public void onReceive(Context context, Intent intent) {
                 int status = intent.getIntExtra("com.nexradnow.android.status",-1);
-                if (status== DataRefreshIntent.STATUS_FINISHED) {
-                    Map<NexradStation,List<NexradProduct>> products =
-                            (Map<NexradStation,List<NexradProduct>>)intent.getSerializableExtra("com.nexradnow.android.productmap");
-                    LatLongCoordinates centerPoint = (LatLongCoordinates)intent.getSerializableExtra("com.nexradnow.android.coords");
-                    lastNexradUpdate = new NexradUpdate(products, centerPoint);
-                    eventBusProvider.getEventBus().post(lastNexradUpdate);
-                } else if (status == DataRefreshIntent.STATUS_ERROR) {
-                    postMessage(intent.getStringExtra("com.nexradnow.android.errmsg"), AppMessage.Type.ERROR);
-                } else if (status == DataRefreshIntent.STATUS_RUNNING) {
-                    String msgText = intent.getStringExtra("com.nexradnow.android.statusmsg");
-                    if (msgText != null) {
-                        postMessage(msgText, AppMessage.Type.PROGRESS);
+                if (intent.getAction().equals(DataRefreshIntent.ACTION)) {
+                    if (status == DataRefreshIntent.STATUS_FINISHED) {
+                        Map<NexradStation, List<NexradProduct>> products =
+                                (Map<NexradStation, List<NexradProduct>>) intent.getSerializableExtra("com.nexradnow.android.productmap");
+                        LatLongCoordinates centerPoint = (LatLongCoordinates) intent.getSerializableExtra("com.nexradnow.android.coords");
+                        lastNexradUpdate = new NexradUpdate(products, centerPoint);
+                        eventBusProvider.getEventBus().post(lastNexradUpdate);
+                    } else if (status == DataRefreshIntent.STATUS_ERROR) {
+                        postMessage(intent.getStringExtra("com.nexradnow.android.errmsg"), AppMessage.Type.ERROR);
+                    } else if (status == DataRefreshIntent.STATUS_RUNNING) {
+                        String msgText = intent.getStringExtra("com.nexradnow.android.statusmsg");
+                        if (msgText != null) {
+                            postMessage(msgText, AppMessage.Type.PROGRESS);
+                        }
+                    }
+                } else if (intent.getAction().equals(LocationInfoIntent.ACTION)) {
+                    // TODO: handle location events
+                    if (status == LocationInfoIntent.STATUS_FINISHED) {
+                        LatLongCoordinates coords = (LatLongCoordinates)intent.getSerializableExtra("com.nexradnow.android.coords");
+                        eventBusProvider.getEventBus().post(new LocationChangeEvent(coords));
+                    } else if (status == LocationInfoIntent.STATUS_ERROR) {
+                        postMessage(intent.getStringExtra("com.nexradnow.android.errmsg"), AppMessage.Type.ERROR);
+                    } else if (status == LocationInfoIntent.STATUS_RUNNING) {
+                        String msgText = intent.getStringExtra("com.nexradnow.android.statusmsg");
+                        if (msgText != null) {
+                            postMessage(msgText, AppMessage.Type.PROGRESS);
+                        }
                     }
                 }
             }
         };
         IntentFilter filter = new IntentFilter();
-        filter.addAction("com.nexradnow.android.newproduct");
+        filter.addAction(DataRefreshIntent.ACTION);
+        filter.addAction(LocationInfoIntent.ACTION);
         LocalBroadcastManager.getInstance(this).registerReceiver(receiver, filter);
     }
 
@@ -102,6 +119,11 @@ public class NexradApp  extends MultiDexApplication {
     public void requestWxForLocation (LatLongCoordinates coords) {
         Intent intent = new Intent(Intent.ACTION_SYNC, null, this, DataRefreshIntent.class);
         intent.putExtra("com.nexradnow.android.coords",coords);
+        startService(intent);
+    }
+
+    public void requestCurrentLocation() {
+        Intent intent = new Intent(this, LocationInfoIntent.class);
         startService(intent);
     }
 

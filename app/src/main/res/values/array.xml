@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="rangeLabels">
+        <item>50 miles</item>
+        <item>100 miles</item>
+        <item>250 miles</item>
+        <item>500 miles</item>
+    </string-array>
+    <string-array name="rangeKm">
+        <item>80</item>
+        <item>160</item>
+        <item>400</item>
+        <item>800</item>
+    </string-array>
+</resources>

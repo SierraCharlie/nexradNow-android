@@ -8,6 +8,7 @@ import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.os.Handler;
 import android.support.v4.view.GestureDetectorCompat;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -19,6 +20,7 @@ import com.nexradnow.android.app.R;
 import com.nexradnow.android.model.AppMessage;
 import com.nexradnow.android.model.LatLongCoordinates;
 import com.nexradnow.android.model.LatLongRect;
+import com.nexradnow.android.model.LocationChangeEvent;
 import com.nexradnow.android.model.NexradProduct;
 import com.nexradnow.android.model.NexradStation;
 import com.nexradnow.android.model.NexradUpdate;
@@ -42,6 +44,7 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * This version of the content display renders its graphics to a backing bitmap,
@@ -144,6 +147,15 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         eventBusProvider.getEventBus().register(this);
         mDetector = new GestureDetectorCompat(ctx,this);
         displayDensity = getResources().getDisplayMetrics().density;
+        // Invalidate the display every minute (or so) to allow timestamp to repaint
+        final Handler handler = new Handler();
+        handler.postDelayed( new Runnable() {
+            public void run() {
+                RadarBitmapView.this.invalidate();
+                // Re-run the handler
+                handler.postDelayed( this, TimeUnit.MILLISECONDS.convert(1, TimeUnit.MINUTES ));
+            }
+        }, TimeUnit.MILLISECONDS.convert(1, TimeUnit.MINUTES ));
     }
 
     @Override
@@ -251,8 +263,21 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
 
         // Layer timestamp on graphic
         DateFormat fmt = new SimpleDateFormat("yyyy-MM-dd HH:mm");
-        String timestamp = fmt.format(dataTimestamp.getTime());
-        drawTimestamp(canvas,timestamp, Color.GREEN);
+        if (dataTimestamp != null) {
+            String timestamp = fmt.format(dataTimestamp.getTime());
+            int color = Color.GREEN;
+            if (System.currentTimeMillis()-dataTimestamp.getTime().getTime() >
+                    TimeUnit.MILLISECONDS.convert(5,TimeUnit.MINUTES)) {
+                color = Color.YELLOW;
+            }
+            if (System.currentTimeMillis()-dataTimestamp.getTime().getTime() >
+                    TimeUnit.MILLISECONDS.convert(15,TimeUnit.MINUTES)) {
+                color = Color.RED;
+            }
+            drawTimestamp(canvas, timestamp, color);
+        } else {
+            drawTimestamp(canvas, "No Data", Color.RED);
+        }
 
     }
 
@@ -292,9 +317,10 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
      * @param dp
      * @return
      */
-    public int scalePixels (int dp) {
+    public int scalePixels (float dp) {
         return (int)((float)dp * displayDensity + 0.5f);
     }
+
 
     /**
      * Called from event bus when a new collection of radar data is received for display
@@ -308,23 +334,34 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         this.invalidate();
     }
 
+    public void onEvent(LocationChangeEvent locationChangeEvent) {
+        Log.d(TAG, "location changed: "+locationChangeEvent);
+        this.productDisplay = null;
+        this.selectedLocation = locationChangeEvent.getCoordinates();
+        regenerateBitmap();
+        this.invalidate();
+    }
     protected void regenerateBitmap() {
         createBackingBitmap();
 
         Canvas bitmapCanvas = new Canvas(backingBitmap);
         Calendar oldestTimestamp = null;
-        for (NexradStation station : productDisplay.keySet()) {
-            if ((productDisplay.get(station)!=null)&&(!productDisplay.get(station).isEmpty())) {
-                Calendar thisTimestamp = productDisplay.get(station).get(0).getTimestamp();
-                if ((oldestTimestamp == null)||(thisTimestamp.before(oldestTimestamp))) {
-                    oldestTimestamp = thisTimestamp;
+        if ((productDisplay!=null)&&(!productDisplay.isEmpty())) {
+            for (NexradStation station : productDisplay.keySet()) {
+                if ((productDisplay.get(station) != null) && (!productDisplay.get(station).isEmpty())) {
+                    Calendar thisTimestamp = productDisplay.get(station).get(0).getTimestamp();
+                    if ((oldestTimestamp == null) || (thisTimestamp.before(oldestTimestamp))) {
+                        oldestTimestamp = thisTimestamp;
+                    }
+                    plotProduct(bitmapCanvas, bitmapLatLongRect, bitmapPixelSize, productDisplay.get(station).get(0));
                 }
-                plotProduct(bitmapCanvas, bitmapLatLongRect, bitmapPixelSize, productDisplay.get(station).get(0));
             }
-        }
-        for (NexradStation station : productDisplay.keySet()) {
-            boolean stationHasData = (productDisplay.get(station)!=null)&&(!productDisplay.get(station).isEmpty());
-            plotStation(bitmapCanvas, bitmapLatLongRect, bitmapPixelSize, station, stationHasData);
+            for (NexradStation station : productDisplay.keySet()) {
+                boolean stationHasData = (productDisplay.get(station) != null) && (!productDisplay.get(station).isEmpty());
+                plotStation(bitmapCanvas, bitmapLatLongRect, bitmapPixelSize, station, stationHasData);
+            }
+        } else {
+            // No products or empty product set
         }
         drawMap(bitmapCanvas, bitmapLatLongRect, bitmapPixelSize);
 
@@ -356,10 +393,30 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         if (stationPaint == null) {
             stationPaint = new Paint();
             stationPaint.setTextSize(scalePixels(10));
+            stationPaint.setStyle(Paint.Style.FILL);
         }
         Paint brush = stationPaint;
         Point stationPoint = scaleCoordinate(station.getCoords(), latLongRect, pixelSize);
-        canvas.drawCircle(stationPoint.x, stationPoint.y, scalePixels(7), brush);
+
+        stationPaint.setColor(Color.DKGRAY);
+        if (hasData) {
+            canvas.drawCircle(stationPoint.x, stationPoint.y, scalePixels(7), brush);
+        } else {
+            // Draw special symbol for station that has no data associated with it.
+            canvas.drawCircle(stationPoint.x, stationPoint.y, scalePixels(7), brush);
+            stationPaint.setColor(Color.WHITE);
+            canvas.drawCircle(stationPoint.x, stationPoint.y, scalePixels(5), brush);
+            stationPaint.setStyle(Paint.Style.STROKE);
+            stationPaint.setColor(Color.RED);
+            float defaultStrokeWidth = stationPaint.getStrokeWidth();
+            stationPaint.setStrokeWidth(scalePixels(2));
+            canvas.drawCircle(stationPoint.x, stationPoint.y, scalePixels(5), brush);
+            canvas.drawLine(stationPoint.x-scalePixels(3),stationPoint.y-scalePixels(3),
+                    stationPoint.x+scalePixels(3),stationPoint.y+scalePixels(3),stationPaint);
+            stationPaint.setStyle(Paint.Style.FILL);
+            stationPaint.setStrokeWidth(defaultStrokeWidth);
+        }
+        stationPaint.setColor(Color.BLACK);
         canvas.drawText(station.getIdentifier(),
                 stationPoint.x + scalePixels(12), stationPoint.y + scalePixels(4), brush);
     }
@@ -371,17 +428,25 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     private void createBackingBitmap() {
         // Determine what actual lat/long region is covered by our data
         bitmapLatLongRect = new LatLongRect(selectedLocation);
-        for ( NexradStation station : productDisplay.keySet() ) {
-            bitmapLatLongRect.union(station.getCoords());
-            List<NexradProduct> radarData = productDisplay.get(station);
-            if (!radarData.isEmpty()) {
-                for (NexradProduct radarProduct : radarData) {
-                    LatLongRect radarDataRect = computeEnclosingRect(radarProduct);
-                    if (radarDataRect != null) {
-                        bitmapLatLongRect.union(radarDataRect);
+        if ((productDisplay!=null)&&(!productDisplay.isEmpty())) {
+            for (NexradStation station : productDisplay.keySet()) {
+                bitmapLatLongRect.union(station.getCoords());
+                List<NexradProduct> radarData = productDisplay.get(station);
+                if (!radarData.isEmpty()) {
+                    for (NexradProduct radarProduct : radarData) {
+                        LatLongRect radarDataRect = computeEnclosingRect(radarProduct);
+                        if (radarDataRect != null) {
+                            bitmapLatLongRect.union(radarDataRect);
+                        }
                     }
                 }
             }
+        } else {
+            // Estimate something reasonable so that when the map is drawn, you can see some
+            // surrounding info (such as some state lines). I'm guessing that offsetting 10 degrees lat/long
+            // in all directions should do it.
+            bitmapLatLongRect.union(selectedLocation.getLongitude()-10.0f,selectedLocation.getLatitude()-10.0f);
+            bitmapLatLongRect.union(selectedLocation.getLongitude()+10.0f,selectedLocation.getLatitude()+10.0f);
         }
         // Now we should know the max that we can display.
         // We want this to respect the aspect ratio of the view. It should be a bit larger than the view,
