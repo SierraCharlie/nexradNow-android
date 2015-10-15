@@ -486,7 +486,22 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         }
         // Compute the bitmap size in pixels
         bitmapPixelSize = new Rect(0,0,viewWidth*2, viewHeight*2);
-        backingBitmap = Bitmap.createBitmap(bitmapPixelSize.width(),bitmapPixelSize.height(), Bitmap.Config.ARGB_8888);
+        // Re-use if size hasn't changed
+        if (backingBitmap != null) {
+            if ((backingBitmap.getHeight()!=bitmapPixelSize.height())||
+                    (backingBitmap.getWidth()!=bitmapPixelSize.width())) {
+                // Size difference
+                backingBitmap.recycle();
+                backingBitmap = null;
+                System.gc();
+            } else {
+                // clear contents
+                backingBitmap.eraseColor(Color.WHITE);
+            }
+        }
+        if (backingBitmap == null) {
+            backingBitmap = Bitmap.createBitmap(bitmapPixelSize.width(), bitmapPixelSize.height(), Bitmap.Config.ARGB_8888);
+        }
 
     }
 
@@ -673,6 +688,8 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         if (mapPaint == null) {
             mapPaint = new Paint();
             mapPaint.setStrokeWidth(scalePixels(2));
+            mapPaint.setColor(Color.GRAY);
+            mapPaint.setAlpha(50);
         }
         Paint brush = mapPaint;
         Point from = null;

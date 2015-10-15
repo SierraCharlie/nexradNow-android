@@ -3,6 +3,7 @@
 
     <string name="action_settings">Settings</string>
     <string name="action_wxrefresh">Refresh Weather</string>
+    <string name="action_setlocation">Set Location</string>
 
     <string name="msg_refreshing_wx">Refreshing weather data</string>
     <string name="msg_getting_station_list">Retrieving list of Nexrad stations</string>

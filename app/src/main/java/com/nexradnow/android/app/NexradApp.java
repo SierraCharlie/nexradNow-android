@@ -1,6 +1,5 @@
 package com.nexradnow.android.app;
 
-import android.app.Application;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -12,6 +11,7 @@ import com.google.inject.Inject;
 import com.nexradnow.android.model.AppMessage;
 import com.nexradnow.android.model.LatLongCoordinates;
 import com.nexradnow.android.model.LocationChangeEvent;
+import com.nexradnow.android.model.LocationSelectionEvent;
 import com.nexradnow.android.model.NexradProduct;
 import com.nexradnow.android.model.NexradStation;
 import com.nexradnow.android.model.NexradUpdate;
@@ -55,7 +55,7 @@ public class NexradApp  extends MultiDexApplication {
             @Override
             public void onReceive(Context context, Intent intent) {
                 int status = intent.getIntExtra("com.nexradnow.android.status",-1);
-                if (intent.getAction().equals(DataRefreshIntent.ACTION)) {
+                if (intent.getAction().equals(DataRefreshIntent.GETWXACTION)) {
                     if (status == DataRefreshIntent.STATUS_FINISHED) {
                         Map<NexradStation, List<NexradProduct>> products =
                                 (Map<NexradStation, List<NexradProduct>>) intent.getSerializableExtra("com.nexradnow.android.productmap");
@@ -70,7 +70,8 @@ public class NexradApp  extends MultiDexApplication {
                             postMessage(msgText, AppMessage.Type.PROGRESS);
                         }
                     }
-                } else if (intent.getAction().equals(LocationInfoIntent.ACTION)) {
+                } else if ((intent.getAction().equals(LocationInfoIntent.GPSLOCATIONACTION))||
+                        (intent.getAction().equals(LocationInfoIntent.GEOCODELOCATIONACTION))){
                     // TODO: handle location events
                     if (status == LocationInfoIntent.STATUS_FINISHED) {
                         LatLongCoordinates coords = (LatLongCoordinates)intent.getSerializableExtra("com.nexradnow.android.coords");
@@ -87,8 +88,9 @@ public class NexradApp  extends MultiDexApplication {
             }
         };
         IntentFilter filter = new IntentFilter();
-        filter.addAction(DataRefreshIntent.ACTION);
-        filter.addAction(LocationInfoIntent.ACTION);
+        filter.addAction(DataRefreshIntent.GETWXACTION);
+        filter.addAction(LocationInfoIntent.GPSLOCATIONACTION);
+        filter.addAction(LocationInfoIntent.GEOCODELOCATIONACTION);
         LocalBroadcastManager.getInstance(this).registerReceiver(receiver, filter);
     }
 
@@ -117,13 +119,21 @@ public class NexradApp  extends MultiDexApplication {
     }
 
     public void requestWxForLocation (LatLongCoordinates coords) {
-        Intent intent = new Intent(Intent.ACTION_SYNC, null, this, DataRefreshIntent.class);
+        Intent intent = new Intent(DataRefreshIntent.GETWXACTION, null, this, DataRefreshIntent.class);
         intent.putExtra("com.nexradnow.android.coords",coords);
         startService(intent);
     }
 
     public void requestCurrentLocation() {
         Intent intent = new Intent(this, LocationInfoIntent.class);
+        intent.setAction(LocationInfoIntent.GPSLOCATIONACTION);
+        startService(intent);
+    }
+
+    public void requestCityStateLocation(String cityState) {
+        Intent intent = new Intent(this, LocationInfoIntent.class);
+        intent.setAction(LocationInfoIntent.GEOCODELOCATIONACTION);
+        intent.putExtra("com.nexradnow.android.citystate", cityState);
         startService(intent);
     }
 
@@ -137,6 +147,21 @@ public class NexradApp  extends MultiDexApplication {
     public void onEvent(ProductRequestMessage requestMessage) {
         if (lastNexradUpdate != null) {
             eventBusProvider.getEventBus().post(lastNexradUpdate);
+        }
+    }
+
+    public void onEvent(LocationSelectionEvent locationSelection) {
+        switch (locationSelection.getType()) {
+            case GPS:
+                requestCurrentLocation();
+                break;
+            case NEXRADSTATION:
+                LocationChangeEvent locationChangeEvent = new LocationChangeEvent(locationSelection.getStation().getCoords());
+                eventBusProvider.getEventBus().post(locationChangeEvent);
+                break;
+            case CITYSTATE:
+                requestCityStateLocation(locationSelection.getCityState());
+                break;
         }
     }
 }

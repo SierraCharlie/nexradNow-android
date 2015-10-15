@@ -1,9 +1,9 @@
 package com.nexradnow.android.services;
 
-import android.app.IntentService;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.support.v4.content.LocalBroadcastManager;
 import com.google.inject.Inject;
@@ -13,12 +13,12 @@ import com.nexradnow.android.exception.NexradNowException;
 import com.nexradnow.android.model.LatLongCoordinates;
 import com.nexradnow.android.model.NexradProduct;
 import com.nexradnow.android.model.NexradStation;
-import roboguice.RoboGuice;
 import roboguice.service.RoboIntentService;
 
+import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Created by hobsonm on 9/15/15.
@@ -37,7 +37,8 @@ public class DataRefreshIntent extends RoboIntentService {
 
     private static final String TAG = "DownloadService";
 
-    public static final String ACTION = "com.nexradnow.android.newproduct";
+    public static final String GETWXACTION = "com.nexradnow.android.newproduct";
+    public static final String GETSTATIONACTION = "com.nexradnow.android.stationlisting";
 
     @Inject
     protected Context ctx;
@@ -52,9 +53,31 @@ public class DataRefreshIntent extends RoboIntentService {
     @Override
 
     protected void onHandleIntent(Intent intent) {
-        try {
-            intent.setAction("com.nexradnow.android.newproduct");
+        if (GETWXACTION.equals(intent.getAction())) {
+            wxAction(intent);
+        }
+        if (GETSTATIONACTION.equals(intent.getAction())) {
+            getStationAction(intent);
+        }
+    }
 
+    private void getStationAction(Intent intent) {
+        intent.setAction(GETSTATIONACTION);
+        try {
+            List<NexradStation> srcStations = nexradDataManager.getNexradStations();
+            Bundle stations = new Bundle();
+            stations.putSerializable("list",(Serializable)srcStations);
+            intent.putExtra("com.nexradnow.android.stationlist", stations);
+            intent.putExtra("com.nexradnow.android.status", STATUS_FINISHED);
+            LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+        } catch (Exception ex) {
+            notifyException(intent, ex);
+        }
+    }
+
+    protected void wxAction(Intent intent) {
+        intent.setAction(GETWXACTION);
+        try {
             LatLongCoordinates coords = (LatLongCoordinates) intent.getSerializableExtra("com.nexradnow.android.coords");
             intent.putExtra("com.nexradnow.android.status", STATUS_RUNNING);
             intent.putExtra("com.nexradnow.android.statusmsg",getResources().getString(R.string.msg_getting_station_list));
@@ -77,25 +100,32 @@ public class DataRefreshIntent extends RoboIntentService {
                         getResources().getString(R.string.msg_getting_data_for_station) + " "
                                 + station.getIdentifier());
                 LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
-                List<NexradProduct> products = nexradDataManager.getNexradProducts("p38cr", station, 30);
-                productMap.put(station, products);
+                try {
+                    List<NexradProduct> products = nexradDataManager.getNexradProducts("p38cr", station, 30);
+                    productMap.put(station, products);
+                } catch (NexradNowException nex) {
+                    notifyException(intent, nex);
+                    productMap.put(station,new ArrayList<NexradProduct>());
+                }
             }
             intent.putExtra("com.nexradnow.android.productmap", productMap);
             intent.putExtra("com.nexradnow.android.status", STATUS_FINISHED);
             intent.putExtra("com.nexradnow.android.coords", coords);
             LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
         } catch (Exception ex) {
-            // Report upstream
-            intent.setAction("com.nexradnow.android.newproduct");
-            if (ex instanceof DataRefreshIntentException) {
-                intent.putExtra("com.nexradnow.android.errmsg", ex.getMessage());
-            } else if (ex instanceof NexradNowException ){
-                intent.putExtra("com.nexradnow.android.errmsg", ex.getMessage());
-            } else {
-                intent.putExtra("com.nexradnow.android.errmsg", ex.toString());
-            }
-            intent.putExtra("com.nexradnow.android.status", STATUS_ERROR);
-            LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+            notifyException(intent, ex);
         }
+    }
+
+    private void notifyException(Intent intent, Exception ex) {
+        if (ex instanceof DataRefreshIntentException) {
+            intent.putExtra("com.nexradnow.android.errmsg", ex.getMessage());
+        } else if (ex instanceof NexradNowException ){
+            intent.putExtra("com.nexradnow.android.errmsg", ex.getMessage());
+        } else {
+            intent.putExtra("com.nexradnow.android.errmsg", ex.toString());
+        }
+        intent.putExtra("com.nexradnow.android.status", STATUS_ERROR);
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
     }
 }

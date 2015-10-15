@@ -70,11 +70,16 @@ public class SettingsActivity extends Activity {
             if (key.equals(KEY_PREF_NEXRAD_STATIONLIST_URL)||
                     key.equals(KEY_PREF_NEXRAD_FTPHOST)||
                     key.equals(KEY_PREF_NEXRAD_FTPDIR)||
-                    key.equals(KEY_PREF_NEXRAD_EMAILADDRESS)||
-                    key.equals(KEY_PREF_NEXRAD_STATIONDISTANCE)) {
+                    key.equals(KEY_PREF_NEXRAD_EMAILADDRESS)) {
                 Preference pref = findPreference(key);
                 // Set summary to be the user-description for the selected value
                 pref.setSummary(sharedPreferences.getString(key, ""));
+            } else if (key.equals(KEY_PREF_NEXRAD_STATIONDISTANCE)) {
+                Preference pref = findPreference(key);
+                int kmDistance = Integer.parseInt(sharedPreferences.getString(key,"-1"));
+                if (kmDistance > 0) {
+                    pref.setSummary(((kmDistance*10)/16)+ " miles");
+                }
             }
         }
     }

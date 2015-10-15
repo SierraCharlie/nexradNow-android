@@ -21,6 +21,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".SettingsActivity" android:label="Settings" />
+        <activity android:name=".LocationSelectionActivity" android:label="Set Location" />
         <service
                 android:name="com.nexradnow.android.services.DataRefreshIntent"
                 android:exported="false" />

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:orientation="vertical"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:padding="10dp">
+
+    <RadioButton
+            android:layout_marginTop="10dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Current GPS Location"
+            android:id="@+id/radioGPSLocation"
+            android:layout_alignParentLeft="true"
+            android:layout_alignParentTop="true"/>
+    <View
+            android:id="@+id/radioGPSLocationRule"
+            android:layout_width="fill_parent"
+            android:layout_height="2dip"
+            android:layout_below="@+id/radioGPSLocation"
+            android:layout_alignParentLeft="true"
+            android:layout_alignParentStart="true"
+            android:background="#000000" />
+    <RelativeLayout
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content" android:layout_below="@+id/radioGPSLocationRule"
+            android:layout_alignParentLeft="true" android:layout_alignParentStart="true"
+            android:id="@+id/radioNexradStationLocationLayout">
+        <RadioButton
+                android:layout_marginTop="20dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Nexrad Station"
+                android:id="@+id/radioNexradStationLocation" android:layout_alignParentTop="true"
+                android:layout_alignParentLeft="true" android:layout_alignParentStart="true"/>
+        <Spinner
+                android:layout_marginLeft="20dp"
+                android:clickable="false"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/spinnerNexradStation" android:layout_alignParentTop="true"
+                android:layout_toRightOf="@+id/radioNexradStationLocation" android:layout_toEndOf="@+id/radioNexradStationLocation"
+                />
+    </RelativeLayout>
+    <View
+            android:id="@+id/radioNexradStationLocationRule"
+            android:layout_width="fill_parent"
+            android:layout_height="2dip"
+            android:layout_below="@+id/radioNexradStationLocationLayout"
+            android:layout_alignParentLeft="true"
+            android:layout_alignParentStart="true"
+            android:background="#000000" />
+    <RadioButton
+            android:layout_marginTop="20dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="City, State"
+            android:id="@+id/radioCityStateLocation" android:layout_below="@+id/radioNexradStationLocationRule" android:layout_alignParentLeft="true"
+            android:layout_alignParentStart="true"/>
+    <EditText
+            android:layout_marginLeft="20dp"
+            android:editable="true"
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:id="@+id/editCityStateText" android:layout_alignBottom="@+id/radioCityStateLocation"
+            android:layout_toRightOf="@+id/radioCityStateLocation"/>
+    <View
+            android:id="@+id/radioCityStateLocationRule"
+            android:layout_width="fill_parent"
+            android:layout_height="2dip"
+            android:layout_below="@+id/radioCityStateLocation"
+            android:layout_alignParentLeft="true"
+            android:layout_alignParentStart="true"
+            android:background="#000000" />
+    <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Set Location"
+            android:id="@+id/setLocationButton" android:layout_below="@+id/radioCityStateLocationRule" android:layout_alignParentLeft="true" />
+
+</RelativeLayout>

@@ -3,13 +3,17 @@ package com.nexradnow.android.services;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
+import android.support.annotation.NonNull;
 import android.util.Log;
 import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import com.nexradnow.android.app.R;
 import com.nexradnow.android.app.SettingsActivity;
 import com.nexradnow.android.exception.NexradNowException;
 import com.nexradnow.android.model.LatLongCoordinates;
+import com.nexradnow.android.model.NexradFTPContents;
 import com.nexradnow.android.model.NexradProduct;
+import com.nexradnow.android.model.NexradProductCache;
 import com.nexradnow.android.model.NexradStation;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.ListUtils;
@@ -32,13 +36,18 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.URL;
 import java.net.URLConnection;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
@@ -49,6 +58,7 @@ import java.util.concurrent.TimeUnit;
  * product types, and actual recent station data as needed.
  *
  */
+@Singleton
 public class NexradDataManager {
 
     @Inject
@@ -57,7 +67,8 @@ public class NexradDataManager {
     public final static String TAG="NEXRADDATA";
     protected final static String CACHESTATIONFILE = "nxstations.obj";
 
-
+    protected Map<NexradStation,Map<String,NexradProductCache>> cache =
+            new HashMap<NexradStation, Map<String, NexradProductCache>>();
 
     public List<NexradStation> getNexradStations () {
         List<NexradStation> results = null;
@@ -103,9 +114,10 @@ public class NexradDataManager {
                     String identifier = line.substring(9, 13);
                     String latitude = line.substring(106, 115);
                     String longitude = line.substring(116, 126);
+                    String location = line.substring(20,50).trim()+" "+line.substring(72,74).trim();
                     Log.d(TAG, "station [" + identifier + "] lat[" + latitude + "] long[" + longitude + "]");
                     LatLongCoordinates coords = new LatLongCoordinates(Float.parseFloat(latitude), Float.parseFloat(longitude));
-                    NexradStation station = new NexradStation(identifier, coords);
+                    NexradStation station = new NexradStation(identifier, coords, location);
                     results.add(station);
                 }
             } catch (IOException ioex) {
@@ -162,17 +174,58 @@ public class NexradDataManager {
         FTPClient ftpClient = new FTPClient();
         ftpClient.configure(conf);
         try {
-            ftpClient.connect(InetAddress.getByName(ftpHost));
-            ftpClient.enterLocalPassiveMode();
-            ftpClient.login("anonymous", eMailAddress);
-            ftpClient.changeWorkingDirectory(ftpDir+ftpProductStationPath);
-            ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
-            FTPFile[] files = ftpClient.listFiles();
+            // Check cache for file list
             Calendar nowCal = Calendar.getInstance();
-            for (FTPFile file : files) {
+            Map<String,NexradProductCache> stationCache = cache.get(station);
+            if (stationCache == null) {
+                stationCache = new HashMap<String,NexradProductCache>();
+                cache.put(station,stationCache);
+            }
+            NexradProductCache productCache = stationCache.get(productCode);
+            NexradFTPContents productContents = null;
+            if (productCache != null) {
+                productCache.ageCache(60, TimeUnit.MINUTES);
+                productContents = productCache.getFtpContents();
+                if ((productContents != null)&&(productContents.getTimestamp().getTimeInMillis()+TimeUnit.MILLISECONDS.convert(5,TimeUnit.MINUTES)<nowCal.getTimeInMillis())){
+                    // Invalidate
+                    productContents = null;
+                }
+            }
+            if (productContents == null) {
+                // We'll need to get a fresh directory listing
+                initFtp(ftpClient, ftpHost, eMailAddress);
+                if (!ftpClient.changeWorkingDirectory(ftpDir+ftpProductStationPath)) {
+                    // Unsuccessful completion
+                    throw new NexradNowException("cannot select product download directory on FTP server");
+                }
+                productContents = new NexradFTPContents(productCode,ftpClient.listFiles(),station);
+            }
+            if (productCache == null) {
+                productCache = new NexradProductCache(productContents,new ArrayList<NexradProduct>());
+            }
+            productCache.setFtpContents(productContents);
+            stationCache.put(productCode,productCache);
+            for (FTPFile file : productContents.getFileList()) {
                 if ((file.getTimestamp().getTimeInMillis()>nowCal.getTimeInMillis()-ageMaxMinutes*60*1000)&&
-                        (!"sn.last".equals(file.getName()))) {
-                        // qualifies!
+                        (!"sn.last".equals(file.getName()))&&(file.getName().startsWith("sn."))) {
+                    // qualifies!
+                    // First see if we have it in our cache. NB: cache has already been aged
+                    NexradProduct product = null;
+                    for (NexradProduct cachedProduct : productCache.getProducts()) {
+                        if (cachedProduct.getFileInfo().getName().equals(file.getName()) &&
+                                cachedProduct.getFileInfo().getTimestamp().equals(file.getTimestamp())) {
+                            // cached object found
+                            product = cachedProduct;
+                            break;
+                        }
+                    }
+                    if (product == null) {
+                        // Not found in cache - must retrieve:
+                        if (initFtp(ftpClient,ftpHost,eMailAddress)) {
+                            if(!ftpClient.changeWorkingDirectory(ftpDir+ftpProductStationPath)) {
+                                throw new NexradNowException("cannot select product download directory on FTP server");
+                            }
+                        }
                         InputStream stream = ftpClient.retrieveFileStream(file.getName());
                         byte[] productBytes = null;
                         try {
@@ -187,8 +240,11 @@ public class NexradDataManager {
                             String status = ftpClient.getStatus();
                             throw new IOException("FTPClient completePendingCommmand() returned error:" + status);
                         }
-                        NexradProduct product = new NexradProduct(station, file, productCode, file.getTimestamp(), productBytes);
-                        results.add(product);
+                        product = new NexradProduct(station, file, productCode, file.getTimestamp(), productBytes);
+                        // add to cache
+                        productCache.getProducts().add(product);
+                    }
+                    results.add(product);
                 }
             }
             // Sort so that items in list are in order of most recent -> least recent
@@ -206,8 +262,19 @@ public class NexradDataManager {
             Collections.sort(results,comparator);
         } catch (Exception ex) {
             Log.e(TAG,"data transfer error["+station+":"+productCode+"]",ex);
-            throw new IllegalStateException("tgftp data transfer error ["+station+":"+productCode+"]", ex);
+            throw new NexradNowException("tgftp data transfer error ["+station+":"+productCode+"]"+ex.toString());
         }
         return results;
+    }
+
+    private boolean initFtp(FTPClient ftpClient, String ftpHost, String eMailAddress) throws Exception {
+        if (ftpClient.isConnected()) {
+            return false;
+        }
+        ftpClient.connect(InetAddress.getByName(ftpHost));
+        ftpClient.enterLocalPassiveMode();
+        ftpClient.login("anonymous", eMailAddress);
+        ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
+        return true;
     }
 }

@@ -105,6 +105,11 @@ public class NexradView extends RoboActionBarActivity {
             return true;
         }
 
+        if (id == R.id.action_setlocation) {
+            startSetLocation();
+            return true;
+        }
+
         if (id == R.id.action_wxrefresh) {
             ((NexradApp)getApplication()).refreshWeather();
             return true;
@@ -118,5 +123,8 @@ public class NexradView extends RoboActionBarActivity {
         startActivity(intent);
     }
 
-
+    private void startSetLocation() {
+        Intent intent = new Intent(this, LocationSelectionActivity.class);
+        startActivity(intent);
+    }
 }

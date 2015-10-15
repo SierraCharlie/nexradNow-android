@@ -2,6 +2,10 @@
       xmlns:app="http://schemas.android.com/apk/res-auto"
       xmlns:tools="http://schemas.android.com/tools"
       tools:context=".NexradView">
+    <item android:id="@+id/action_setlocation"
+          android:title="@string/action_setlocation"
+          android:orderInCategory="98"
+          app:showAsAction="never"/>
     <item android:id="@+id/action_settings"
           android:title="@string/action_settings"
           android:orderInCategory="100"
