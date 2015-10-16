@@ -22,6 +22,7 @@ public class SettingsActivity extends Activity {
     public static final String KEY_PREF_NEXRAD_FTPDIR = "pref_nexrad_ftpdir";
     public static final String KEY_PREF_NEXRAD_EMAILADDRESS = "pref_nexrad_emailaddress";
     public static final String KEY_PREF_NEXRAD_STATIONDISTANCE = "pref_nexrad_stationdistance";
+    public static final String KEY_PREF_NEXRAD_PRODUCT = "pref_nexrad_product";
 
     public static class SettingsFragment extends PreferenceFragment
             implements SharedPreferences.OnSharedPreferenceChangeListener {

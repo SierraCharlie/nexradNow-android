@@ -1,9 +1,13 @@
 package com.nexradnow.android.nexradproducts;
 
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import com.nexradnow.android.exception.NexradNowException;
 import com.nexradnow.android.model.LatLongRect;
 import com.nexradnow.android.model.LatLongScaler;
 import com.nexradnow.android.model.NexradProduct;
+import org.atteo.classindex.IndexSubclasses;
 
 /**
  * Interface for product renderers that understand how to paint a Nexrad product into
@@ -11,6 +15,7 @@ import com.nexradnow.android.model.NexradProduct;
  *
  * Created by hobsonm on 10/14/15.
  */
+@IndexSubclasses
 public interface NexradRenderer {
     /**
      * Return the simple product code (e.g. "p38cr") that this renderer is built for
@@ -27,15 +32,16 @@ public interface NexradRenderer {
     /**
      * Paint the product into the supplied bitmap.
      * @param product product to be painted
-     * @param bitmap bitmap
+     * @param canvas canvas to paint on (could be a bitmap)
      * @param scaler translation between lat/long values and bitmap pixel coordinates
+     * @param paint Paint object to use when rendering (so the caller can cache/reuse)
      */
-    void renderToBitmap(NexradProduct product, Bitmap bitmap, LatLongScaler scaler);
+    void renderToCanvas( Canvas canvas, NexradProduct product, Paint paint, LatLongScaler scaler) throws NexradNowException;
 
     /**
      * Identify the area covered by a product
      * @param product
      * @return lat/long area covered by the product
      */
-    LatLongRect findExtents(NexradProduct product);
+    LatLongRect findExtents(NexradProduct product) throws NexradNowException;
 }

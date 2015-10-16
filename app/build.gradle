@@ -82,4 +82,15 @@ dependencies {
         exclude group: 'commons-collections', module: 'commons-collections'
     }
     compile 'commons-beanutils:commons-beanutils-core:1.8.3'
+    compile 'org.atteo.classindex:classindex:3.4'
+}
+
+// Package the preprocessed Annotations (ClassIndex) into the APK
+tasks.withType(com.android.build.gradle.tasks.PackageApplication) { pkgTask ->
+    android.applicationVariants.all { variant ->
+        def String variantName = variant.getName().capitalize()
+        if (pkgTask.getName().indexOf(variantName) != -1) {
+            pkgTask.setJavaResourceDir(new File(buildDir, "intermediates/classes/$variant.dirName"))
+        }
+    }
 }

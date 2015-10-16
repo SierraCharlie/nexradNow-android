@@ -30,6 +30,9 @@ import java.util.Map;
  * Created by hobsonm on 10/2/15.
  */
 public class NexradApp  extends MultiDexApplication {
+
+    protected static final String TAG="NexradApp";
+
     @Inject
     protected EventBusProvider eventBusProvider;
 
@@ -48,7 +51,6 @@ public class NexradApp  extends MultiDexApplication {
     @Override
     public void onCreate() {
         super.onCreate();
-        // TODO Put your application initialization code here.
         RoboGuice.getInjector(getApplicationContext()).injectMembers(this);
         eventBusProvider.getEventBus().register(this);
         BroadcastReceiver receiver = new BroadcastReceiver() {
@@ -121,6 +123,7 @@ public class NexradApp  extends MultiDexApplication {
     public void requestWxForLocation (LatLongCoordinates coords) {
         Intent intent = new Intent(DataRefreshIntent.GETWXACTION, null, this, DataRefreshIntent.class);
         intent.putExtra("com.nexradnow.android.coords",coords);
+        intent.putExtra("com.nexradnow.android.productcode","p37cr");
         startService(intent);
     }
 

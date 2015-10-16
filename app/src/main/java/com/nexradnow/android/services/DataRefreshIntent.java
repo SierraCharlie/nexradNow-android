@@ -101,7 +101,8 @@ public class DataRefreshIntent extends RoboIntentService {
                                 + station.getIdentifier());
                 LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
                 try {
-                    List<NexradProduct> products = nexradDataManager.getNexradProducts("p38cr", station, 30);
+                    List<NexradProduct> products = nexradDataManager.getNexradProducts(
+                            intent.getStringExtra("com.nexradnow.android.productcode"), station, 30);
                     productMap.put(station, products);
                 } catch (NexradNowException nex) {
                     notifyException(intent, nex);
