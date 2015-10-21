@@ -35,8 +35,9 @@ public interface NexradRenderer {
      * @param canvas canvas to paint on (could be a bitmap)
      * @param scaler translation between lat/long values and bitmap pixel coordinates
      * @param paint Paint object to use when rendering (so the caller can cache/reuse)
+     * @param minFeatureSize minimum item size to render (in pixels)
      */
-    void renderToCanvas( Canvas canvas, NexradProduct product, Paint paint, LatLongScaler scaler) throws NexradNowException;
+    void renderToCanvas( Canvas canvas, NexradProduct product, Paint paint, LatLongScaler scaler, int minFeatureSize) throws NexradNowException;
 
     /**
      * Identify the area covered by a product

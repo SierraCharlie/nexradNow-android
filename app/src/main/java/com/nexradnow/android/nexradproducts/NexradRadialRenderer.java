@@ -68,7 +68,8 @@ lon2 = lon1 + atan2(sin(θ)*sin(d/R)*cos(lat1), cos(d/R)−sin(lat1)*sin(lat2))
         return new LatLongCoordinates(newLat,newLong);
     }
     @Override
-    public void renderToCanvas(Canvas canvas, NexradProduct product, Paint paint, LatLongScaler scaler) throws NexradNowException {
+    public void renderToCanvas(Canvas canvas, NexradProduct product, Paint paint, LatLongScaler scaler,
+                               int minFeatureSize) throws NexradNowException {
         // General flow:
         // Analyze data to find radial array
         // Determine angle values and range values
@@ -120,20 +121,45 @@ lon2 = lon1 + atan2(sin(θ)*sin(d/R)*cos(lat1), cos(d/R)−sin(lat1)*sin(lat2))
             }
             LatLongCoordinates origin = new LatLongCoordinates(latOrigin,lonOrigin);
             Path polyPath = new Path();
+            // Estimate how big of a "chunk" we need in order to reach our minimum feature size
+            int stepSize = 1;
+            float distanceForFeature = scaler.distanceForPixels(minFeatureSize);
+            while ((gateDistancesMeters[stepSize]<distanceForFeature)&&(stepSize<gateDistancesMeters.length)) {
+                stepSize++;
+            }
             // Now everything is loaded! Have at it.
             PointF stashedPts[] = new PointF[gateDistancesMeters.length];
             stashedPts[0] = scaler.scaleLatLong(origin);
-            for (int angleIndex = 0; angleIndex < azimuthAngles.length; angleIndex++) {
+            for (int angleIndex = 0; angleIndex < azimuthAngles.length; angleIndex += stepSize) {
                 float startAngle = azimuthAngles[angleIndex];
-                float endAngle = azimuthAngles[(angleIndex > 0)?(angleIndex-1):(azimuthAngles.length-1)];
+                float endAngle = azimuthAngles[(angleIndex + stepSize)<azimuthAngles.length?(angleIndex+stepSize):
+                        (angleIndex+stepSize-azimuthAngles.length)];
                 PointF prevPt2 = stashedPts[0];
                 PointF prevPt3 = stashedPts[0];
-                for (int gateIndex = 1; gateIndex < gateDistancesMeters.length; gateIndex++) {
-                    float startGateDistance = gateDistancesMeters[gateIndex-1];
-                    float endGateDistance = gateDistancesMeters[gateIndex];
+                for (int gateIndex = 0; gateIndex + stepSize < gateDistancesMeters.length; gateIndex+= stepSize) {
+                    float startGateDistance = gateDistancesMeters[gateIndex];
+                    float endGateDistance = gateDistancesMeters[gateIndex+stepSize];
                     // At this point we know all four points of the polygon. Compute and put in path IFF the value
                     // is a number
                     float cellValue = radialArray.get(angleIndex, gateIndex);
+                    if (stepSize > 1) {
+                        for (int searchGateIndex = gateIndex; searchGateIndex < gateIndex+stepSize; searchGateIndex++) {
+                            for (int searchAngleIndex = angleIndex; searchAngleIndex < angleIndex+stepSize; searchAngleIndex++) {
+                                float testValue = radialArray.get((searchAngleIndex<azimuthAngles.length)?searchAngleIndex:(searchAngleIndex-azimuthAngles.length),
+                                        searchGateIndex);
+                                if (Float.isNaN(testValue)) {
+                                    continue;
+                                }
+                                if (Float.isNaN(cellValue)) {
+                                    cellValue = testValue;
+                                }
+                                if (testValue > cellValue) {
+                                    cellValue = testValue;
+                                }
+                            }
+                        }
+                    }
+                    // TODO - find max value in the area covered by this step size
                     if (Float.isNaN(cellValue)||(cellValue <= 0)) {
                         stashedPts[gateIndex] = null;
                         prevPt2 = null;
@@ -171,10 +197,11 @@ lon2 = lon1 + atan2(sin(θ)*sin(d/R)*cos(lat1), cos(d/R)−sin(lat1)*sin(lat2))
                     productPaint.setStrokeWidth(1.5f);
                     productPaint.setStyle(Paint.Style.FILL_AND_STROKE);
                     polyPath.reset();
-                    polyPath.moveTo(pt1.x,pt2.y);
+                    polyPath.moveTo(pt1.x,pt1.y);
                     polyPath.lineTo(pt2.x,pt2.y);
                     polyPath.lineTo(pt3.x,pt3.y);
                     polyPath.lineTo(pt4.x,pt4.y);
+                    polyPath.lineTo(pt1.x,pt1.y);
                     canvas.drawPath(polyPath,productPaint);
                 }
             }

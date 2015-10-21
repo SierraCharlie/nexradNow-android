@@ -5,6 +5,8 @@ import org.atteo.classindex.ClassIndex;
 
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -29,6 +31,13 @@ public class RendererInventory {
                 throw new IllegalStateException("cannot instantiate a renderer", ex);
             }
         }
+        Comparator<NexradRenderer> comp = new Comparator<NexradRenderer>() {
+            @Override
+            public int compare(NexradRenderer lhs, NexradRenderer rhs) {
+                return lhs.getProductDescription().compareTo(rhs.getProductDescription());
+            }
+        };
+        Collections.sort(rendererList, comp);
         renderers = rendererList.toArray(new NexradRenderer[0]);
         codes = new String[renderers.length];
         descriptions = new String[renderers.length];

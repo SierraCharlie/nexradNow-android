@@ -7,4 +7,7 @@ import android.graphics.PointF;
  */
 public interface LatLongScaler {
     PointF scaleLatLong(LatLongCoordinates coordinates);
+    LatLongCoordinates scalePoint(PointF point);
+    float distanceForPixels(int pixelCount);
+    int pixelsForDistance(float distanceMeters);
 }

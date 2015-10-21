@@ -34,6 +34,7 @@
                 android:id="@+id/radioNexradStationLocation" android:layout_alignParentTop="true"
                 android:layout_alignParentLeft="true" android:layout_alignParentStart="true"/>
         <Spinner
+                android:layout_marginTop="20dp"
                 android:layout_marginLeft="20dp"
                 android:clickable="true"
                 android:layout_width="wrap_content"
@@ -62,6 +63,7 @@
             android:editable="true"
             android:layout_width="fill_parent"
             android:layout_height="wrap_content"
+            android:lines="1"
             android:id="@+id/editCityStateText" android:layout_alignBottom="@+id/radioCityStateLocation"
             android:layout_toRightOf="@+id/radioCityStateLocation"/>
     <View

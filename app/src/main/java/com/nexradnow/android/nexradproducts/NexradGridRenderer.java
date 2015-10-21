@@ -56,7 +56,7 @@ public abstract class NexradGridRenderer implements NexradRenderer {
     public abstract String getProductDescription();
 
     @Override
-    public void renderToCanvas(Canvas canvas, NexradProduct product, Paint paint, LatLongScaler scaler)
+    public void renderToCanvas(Canvas canvas, NexradProduct product, Paint paint, LatLongScaler scaler, int minFeatureSize)
             throws NexradNowException {
         Paint productPaint = paint;
         byte[] rawData = product.getBinaryData();

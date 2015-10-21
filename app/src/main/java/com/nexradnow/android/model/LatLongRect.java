@@ -31,6 +31,17 @@ public class LatLongRect implements Serializable {
         this.right = coords.getLongitude();
     }
 
+    public boolean contains (LatLongCoordinates coords) {
+        boolean result = true;
+        if ((coords.getLatitude()>this.top)||
+                (coords.getLatitude()<this.bottom)||
+                (coords.getLongitude()<this.left)||
+                (coords.getLongitude()>this.right)) {
+            result = false;
+        }
+        return result;
+    }
+
     public LatLongRect union(double x, double y) {
         if (y > top) {
             top = y;

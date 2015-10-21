@@ -2,7 +2,6 @@ package com.nexradnow.android.views;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -12,18 +11,16 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.Parcel;
 import android.os.Parcelable;
 import android.support.v4.view.GestureDetectorCompat;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
 import android.view.View;
-import com.google.inject.Inject;
 import com.nexradnow.android.app.R;
 import com.nexradnow.android.exception.NexradNowException;
-import com.nexradnow.android.model.AppMessage;
 import com.nexradnow.android.model.LatLongCoordinates;
 import com.nexradnow.android.model.LatLongRect;
 import com.nexradnow.android.model.LatLongScaler;
@@ -33,25 +30,17 @@ import com.nexradnow.android.model.NexradStation;
 import com.nexradnow.android.model.NexradUpdate;
 import com.nexradnow.android.nexradproducts.NexradRenderer;
 import com.nexradnow.android.nexradproducts.RendererInventory;
-import com.nexradnow.android.services.EventBusProvider;
 import org.nocrala.tools.gis.data.esri.shapefile.ShapeFileReader;
 import org.nocrala.tools.gis.data.esri.shapefile.header.ShapeFileHeader;
 import org.nocrala.tools.gis.data.esri.shapefile.shape.AbstractShape;
 import org.nocrala.tools.gis.data.esri.shapefile.shape.PointData;
 import org.nocrala.tools.gis.data.esri.shapefile.shape.shapes.AbstractPolyShape;
-import roboguice.RoboGuice;
-import ucar.ma2.ArrayFloat;
-import ucar.nc2.Dimension;
-import ucar.nc2.NetcdfFile;
-import ucar.nc2.Variable;
 
-import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.Serializable;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -63,13 +52,15 @@ import java.util.concurrent.TimeUnit;
  *
  * Created by hobsonm on 9/29/15.
  */
-public class RadarBitmapView extends View implements GestureDetector.OnGestureListener {
+public class RadarBitmapView extends View implements GestureDetector.OnGestureListener,
+    ScaleGestureDetector.OnScaleGestureListener {
 
     public static String TAG = "RADARBITMAPVIEW";
 
 
     // Helper to detect gestures
     private GestureDetectorCompat mDetector;
+    private ScaleGestureDetector sDetector;
 
     /**
      * Collection of Nexrad data that is to be displayed
@@ -135,6 +126,8 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
 
     protected NexradRenderer lastRenderer;
 
+    protected String productDescription;
+
     public RadarBitmapView(Context context) {
         super(context);
         init();
@@ -155,6 +148,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         setSaveEnabled(true);
         rendererInventory = new RendererInventory();
         mDetector = new GestureDetectorCompat(getContext(),this);
+        sDetector = new ScaleGestureDetector(getContext(),this);
         displayDensity = getResources().getDisplayMetrics().density;
         // Invalidate the display every minute (or so) to allow timestamp to repaint
         final Handler handler = new Handler();
@@ -213,18 +207,56 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         viewWidth = w;
         if ((selectedLocation!=null)&&(productDisplay!=null)&&(!productDisplay.isEmpty())) {
             if ((viewWidth > 0)&&(viewHeight>0)) {
-                regenerateBitmap();
-                this.invalidate();
+                regenerateBitmap(null);
+                // this.invalidate();
             }
         }
     }
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if(this.mDetector.onTouchEvent(event)) {
-            return true;
+        boolean retval = this.sDetector.onTouchEvent(event);
+        retval = this.mDetector.onTouchEvent(event) || retval;
+        retval = super.onTouchEvent(event) || retval;
+        return retval;
+    }
+
+    protected boolean scaling = false;
+    protected float cumulativeScale = 1;
+    @Override
+    public boolean onScale(ScaleGestureDetector detector) {
+        // resize bitmap clipping rect and redraw
+        cumulativeScale *= detector.getScaleFactor();
+        if (cumulativeScale < 0.5f) {
+            cumulativeScale = 0.5f;
         }
-        return super.onTouchEvent(event);
+        this.invalidate();
+        return true;
+    }
+
+    @Override
+    public boolean onScaleBegin(ScaleGestureDetector detector) {
+        // set SCALING in progress
+        cumulativeScale = 1.0f;
+        scaling = true;
+        return true;
+    }
+
+    @Override
+    public void onScaleEnd(ScaleGestureDetector detector) {
+        // re-render bitmap at new scale factor
+        scaling = false;
+        LatLongCoordinates centerLatLong = scalePoint(viewCenter,bitmapLatLongRect,bitmapPixelSize);
+        float latSpan = (float)bitmapLatLongRect.height() * 1.0f/cumulativeScale;
+        float longSpan = (float)bitmapLatLongRect.width() * 1.0f/cumulativeScale;
+        LatLongRect scaledLatLongRect = new LatLongRect(0,0,0,0);
+        scaledLatLongRect.left = centerLatLong.getLongitude()-longSpan/2.0;
+        scaledLatLongRect.right = scaledLatLongRect.left + longSpan;
+        scaledLatLongRect.bottom = centerLatLong.getLatitude() - latSpan/2.0;
+        scaledLatLongRect.top = scaledLatLongRect.bottom + latSpan;
+        regenerateBitmap(scaledLatLongRect);
+        viewCenter = scaleCoordinate(centerLatLong,bitmapLatLongRect,bitmapPixelSize);
+        this.invalidate();
     }
 
     @Override
@@ -242,22 +274,40 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
 
         Rect bitmapClipRect = new Rect();
         bitmapClipRect.left = viewCenter.x - viewWidth/2;
-        if (bitmapClipRect.left < 0) {
-            bitmapClipRect.left = 0;
-        }
         bitmapClipRect.right = bitmapClipRect.left+viewWidth;
-        if (bitmapClipRect.right > bitmapPixelSize.width()) {
-            bitmapClipRect.right = bitmapPixelSize.width();
+        bitmapClipRect.top = viewCenter.y - viewHeight/2;
+        bitmapClipRect.bottom = bitmapClipRect.top + viewHeight;
+
+        if (scaling) {
+            float sizeFactor = 1.0f/cumulativeScale;
+            int newHeight = (int)(bitmapClipRect.height() * sizeFactor);
+            int newWidth = (int)(bitmapClipRect.width() * sizeFactor);
+            int heightAdjust = (newHeight - bitmapClipRect.height())/2;
+            int widthAdjust = (newWidth - bitmapClipRect.width())/2;
+            bitmapClipRect.left -= widthAdjust;
+            bitmapClipRect.right += widthAdjust;
+            bitmapClipRect.top -= heightAdjust;
+            bitmapClipRect.bottom += heightAdjust;
+        }
+        if (!scaling) {
+            if (bitmapClipRect.left < 0) {
+                bitmapClipRect.left = 0;
+                bitmapClipRect.right = viewWidth;
+            }
+            if (bitmapClipRect.right > bitmapPixelSize.width()) {
+                bitmapClipRect.right = bitmapPixelSize.width();
+                bitmapClipRect.left = bitmapClipRect.right - viewWidth;
+            }
+            if (bitmapClipRect.top < 0) {
+                bitmapClipRect.top = 0;
+                bitmapClipRect.bottom = viewHeight;
+            }
+            if (bitmapClipRect.bottom > bitmapPixelSize.height()) {
+                bitmapClipRect.bottom = bitmapPixelSize.height();
+                bitmapClipRect.top = bitmapClipRect.bottom - viewHeight;
+            }
         }
         viewCenter.x = bitmapClipRect.centerX();
-        bitmapClipRect.top = viewCenter.y - viewHeight/2;
-        if (bitmapClipRect.top < 0) {
-            bitmapClipRect.top = 0;
-        }
-        bitmapClipRect.bottom = bitmapClipRect.top + viewHeight;
-        if (bitmapClipRect.bottom > bitmapPixelSize.height()) {
-            bitmapClipRect.bottom = bitmapPixelSize.height();
-        }
         viewCenter.y = bitmapClipRect.centerY();
 
         canvas.drawBitmap(backingBitmap, bitmapClipRect, destRect, brush);
@@ -275,7 +325,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
                     TimeUnit.MILLISECONDS.convert(15,TimeUnit.MINUTES)) {
                 color = Color.RED;
             }
-            String productDescription = null;
+            productDescription = null;
             if (lastRenderer != null) {
                 productDescription = lastRenderer.getProductDescription();
             }
@@ -350,24 +400,30 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         Log.d(TAG, "update received: " + updateProducts.toString()+" -> this:"+this.toString());
         this.productDisplay = updateProducts.getUpdateProduct();
         this.selectedLocation = updateProducts.getCenterPoint();
-        regenerateBitmap();
+        regenerateBitmap(null);
         this.invalidate();
     }
 
     public void onEvent(LocationChangeEvent locationChangeEvent) {
         Log.d(TAG, "location changed: "+locationChangeEvent);
-        this.productDisplay = null;
+        if ((selectedLocation!=null)&&
+                (locationChangeEvent.getCoordinates().distanceTo(selectedLocation)>100)) {
+            this.productDisplay = null;
+        }
         this.selectedLocation = locationChangeEvent.getCoordinates();
-        regenerateBitmap();
+        regenerateBitmap(null);
         this.invalidate();
     }
-    protected void regenerateBitmap() {
-        createBackingBitmap();
+    protected void regenerateBitmap(LatLongRect bitmapRegion) {
+        createBackingBitmap(bitmapRegion);
 
         Canvas bitmapCanvas = new Canvas(backingBitmap);
         Calendar oldestTimestamp = null;
         if ((productDisplay!=null)&&(!productDisplay.isEmpty())) {
             for (NexradStation station : productDisplay.keySet()) {
+                if (!bitmapLatLongRect.contains(station.getCoords())) {
+                    continue;
+                }
                 if ((productDisplay.get(station) != null) && (!productDisplay.get(station).isEmpty())) {
                     Calendar thisTimestamp = productDisplay.get(station).get(0).getTimestamp();
                     if ((oldestTimestamp == null) || (thisTimestamp.before(oldestTimestamp))) {
@@ -377,6 +433,9 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
                 }
             }
             for (NexradStation station : productDisplay.keySet()) {
+                if (!bitmapLatLongRect.contains(station.getCoords())) {
+                    continue;
+                }
                 boolean stationHasData = (productDisplay.get(station) != null) && (!productDisplay.get(station).isEmpty());
                 plotStation(bitmapCanvas, bitmapLatLongRect, bitmapPixelSize, station, stationHasData);
             }
@@ -415,6 +474,14 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         pixY = pixelRect.height() - pixY;
         int pixX = (int)((longOffset*(double)pixelRect.width())/coordRect.width());
         return new Point(pixX,pixY);
+    }
+
+    private LatLongCoordinates scalePoint(Point point, LatLongRect coordRect, Rect pixelRect) {
+        int xOffset = point.x - pixelRect.left;
+        int yOffset = point.y - pixelRect.top;
+        double longValue = coordRect.left + (float)xOffset/(float)pixelRect.width()* coordRect.width();
+        double latValue = coordRect.top - (float)yOffset/(float)pixelRect.height() * coordRect.height();
+        return new LatLongCoordinates(latValue, longValue);
     }
 
     private void plotStation(Canvas canvas, LatLongRect latLongRect, Rect pixelSize,
@@ -462,50 +529,56 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     /**
      * Generate the backing bitmap for the display.
      */
-    private void createBackingBitmap() {
-        // Determine what actual lat/long region is covered by our data
-        bitmapLatLongRect = new LatLongRect(selectedLocation);
-        if ((productDisplay!=null)&&(!productDisplay.isEmpty())) {
-            for (NexradStation station : productDisplay.keySet()) {
-                bitmapLatLongRect.union(station.getCoords());
-                List<NexradProduct> radarData = productDisplay.get(station);
-                if (!radarData.isEmpty()) {
-                    for (NexradProduct radarProduct : radarData) {
-                        LatLongRect radarDataRect = computeEnclosingRect(radarProduct);
-                        if (radarDataRect != null) {
-                            bitmapLatLongRect.union(radarDataRect);
+    private void createBackingBitmap(LatLongRect span) {
+        if (span==null) {
+            // Determine what actual lat/long region is covered by our data
+            bitmapLatLongRect = new LatLongRect(selectedLocation);
+            if ((productDisplay != null) && (!productDisplay.isEmpty())) {
+                for (NexradStation station : productDisplay.keySet()) {
+                    bitmapLatLongRect.union(station.getCoords());
+                    List<NexradProduct> radarData = productDisplay.get(station);
+                    if (!radarData.isEmpty()) {
+                        for (NexradProduct radarProduct : radarData) {
+                            LatLongRect radarDataRect = computeEnclosingRect(radarProduct);
+                            if (radarDataRect != null) {
+                                bitmapLatLongRect.union(radarDataRect);
+                            }
                         }
                     }
                 }
+            } else {
+                // Estimate something reasonable so that when the map is drawn, you can see some
+                // surrounding info (such as some state lines). I'm guessing that offsetting 10 degrees lat/long
+                // in all directions should do it.
+                bitmapLatLongRect.union(selectedLocation.getLongitude() - 10.0f, selectedLocation.getLatitude() - 10.0f);
+                bitmapLatLongRect.union(selectedLocation.getLongitude() + 10.0f, selectedLocation.getLatitude() + 10.0f);
+            }
+            // Now we should know the max that we can display.
+            // We want this to respect the aspect ratio of the view. It should be a bit larger than the view,
+            // with the same aspect ratio. It should also be centered on the "selected location".
+            // First make sure that we include the selected location itself...
+            bitmapLatLongRect.union((float) selectedLocation.getLongitude(), (float) selectedLocation.getLatitude());
+            // Now re-center
+            double centerX = bitmapLatLongRect.centerX();
+            double xDiff = centerX - selectedLocation.getLongitude();
+            if (xDiff < 0) {
+                bitmapLatLongRect.right += 2*xDiff;
+            } else {
+                bitmapLatLongRect.left -= 2*xDiff;
+            }
+            double centerY = bitmapLatLongRect.centerY();
+            double yDiff = centerY - selectedLocation.getLatitude();
+            if (yDiff < 0) {
+                bitmapLatLongRect.top += 2*yDiff;
+            } else {
+                bitmapLatLongRect.bottom -= 2*yDiff;
             }
         } else {
-            // Estimate something reasonable so that when the map is drawn, you can see some
-            // surrounding info (such as some state lines). I'm guessing that offsetting 10 degrees lat/long
-            // in all directions should do it.
-            bitmapLatLongRect.union(selectedLocation.getLongitude()-10.0f,selectedLocation.getLatitude()-10.0f);
-            bitmapLatLongRect.union(selectedLocation.getLongitude()+10.0f,selectedLocation.getLatitude()+10.0f);
+            // If we've been explicitly told which area to map, then...
+            bitmapLatLongRect = span;
         }
-        // Now we should know the max that we can display.
-        // We want this to respect the aspect ratio of the view. It should be a bit larger than the view,
-        // with the same aspect ratio. It should also be centered on the "selected location".
-        // First make sure that we include the selected location itself...
-        bitmapLatLongRect.union((float) selectedLocation.getLongitude(), (float) selectedLocation.getLatitude());
         // Compute the aspect ratio of the display
-        double centerX = bitmapLatLongRect.centerX();
-        double xDiff = centerX - selectedLocation.getLongitude();
-        if (xDiff < 0) {
-            bitmapLatLongRect.right += 2*xDiff;
-        } else {
-            bitmapLatLongRect.left -= 2*xDiff;
-        }
-        double centerY = bitmapLatLongRect.centerY();
-        double yDiff = centerY - selectedLocation.getLatitude();
-        if (yDiff < 0) {
-            bitmapLatLongRect.top += 2*yDiff;
-        } else {
-            bitmapLatLongRect.bottom -= 2*yDiff;
-        }
-        // Respect the aspect ratio of the display
+         // Respect the aspect ratio of the display
         float targetAspectRatio = (float)viewHeight/(float)viewWidth;
         double bitmapAspectRatio = (bitmapLatLongRect.height()/bitmapLatLongRect.width());
         if (bitmapAspectRatio < targetAspectRatio) {
@@ -547,7 +620,6 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         }
         // Compute the center point
         viewCenter = new Point(bitmapPixelSize.centerX(), bitmapPixelSize.centerY());
-
     }
 
     /**
@@ -576,6 +648,26 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
             public PointF scaleLatLong(LatLongCoordinates coordinates) {
                 return new PointF(scaleCoordinate(coordinates, latLongRect, pixelSize));
             }
+            @Override
+            public float distanceForPixels(int pixelCount) {
+                double lonSpan = latLongRect.width();
+                double lonPerPixel = lonSpan/pixelSize.width();
+                double distancePerLon = 111132;
+                double distance = lonPerPixel * (double)pixelCount * distancePerLon;
+                return (float)distance;
+            }
+            @Override
+            public LatLongCoordinates scalePoint(PointF point) {
+                return RadarBitmapView.this.scalePoint(new Point((int) point.x, (int) point.y), latLongRect, pixelSize);
+            }
+            @Override
+            public int pixelsForDistance(float distanceMeters) {
+                double lonSpan = latLongRect.width();
+                double lonPerPixel = lonSpan/pixelSize.width();
+                double distancePerLon = 111132;
+                double pixels = (double)distanceMeters/distancePerLon/lonPerPixel;
+                return (int)pixels;
+            }
         };
         if (productPaint == null) {
             productPaint = new Paint();
@@ -583,7 +675,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         NexradRenderer renderer = rendererInventory.getRenderer(product.getProductCode());
         if (renderer != null) {
             try {
-                renderer.renderToCanvas(canvas, product, productPaint, scaler);
+                renderer.renderToCanvas(canvas, product, productPaint, scaler, 4);
                 lastRenderer = renderer;
             } catch (Exception ex) {
                 Log.e(TAG,"error rendering product for station "+product.getStation().getIdentifier(),ex);
@@ -677,6 +769,9 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         if (dataTimestamp != null) {
             savedState.putSerializable("timestamp", dataTimestamp);
         }
+        if (productDescription != null) {
+            savedState.putString("productDescription", productDescription);
+        }
         if (productDisplay != null) {
             savedState.putSerializable("productDisplay", (Serializable) productDisplay);
         }
@@ -695,9 +790,10 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         selectedLocation = (LatLongCoordinates)savedState.getSerializable("selectedLocation");
         dataTimestamp = (Calendar)savedState.getSerializable("timestamp");
         productDisplay = (Map)savedState.getSerializable("productDisplay");
+        productDescription = savedState.getString("productDescription");
         if ((selectedLocation!=null)&&(productDisplay!=null)&&(!productDisplay.isEmpty())) {
             if ((viewWidth > 0)&&(viewHeight>0)) {
-                regenerateBitmap();
+                regenerateBitmap(null);
                 this.invalidate();
             }
         }
@@ -728,10 +824,5 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         }
         super.onRestoreInstanceState(state);
     }
-/*
-    @Override
-    protected void onDetachedFromWindow() {
-        super.onDetachedFromWindow();
-        releaseBitmap();
-    } */
+
 }
