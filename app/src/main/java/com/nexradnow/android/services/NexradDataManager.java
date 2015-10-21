@@ -118,6 +118,8 @@ public class NexradDataManager {
                     Log.d(TAG, "station [" + identifier + "] lat[" + latitude + "] long[" + longitude + "]");
                     LatLongCoordinates coords = new LatLongCoordinates(Float.parseFloat(latitude), Float.parseFloat(longitude));
                     NexradStation station = new NexradStation(identifier, coords, location);
+                    if ("KOUN".equals(station.getIdentifier())) { continue; }
+                    if ("KCRI".equals(station.getIdentifier())) { continue; }
                     results.add(station);
                 }
             } catch (IOException ioex) {

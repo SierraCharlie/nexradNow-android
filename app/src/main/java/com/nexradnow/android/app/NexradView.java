@@ -1,14 +1,28 @@
 package com.nexradnow.android.app;
 
+import android.Manifest;
+import android.app.Dialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.IntentSender;
+import android.content.pm.PackageManager;
+import android.location.Location;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.support.v4.content.LocalBroadcastManager;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.Toast;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.location.LocationListener;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationServices;
 import com.google.inject.Inject;
 import com.nexradnow.android.model.AppMessage;
 import com.nexradnow.android.model.LatLongCoordinates;
@@ -18,50 +32,171 @@ import com.nexradnow.android.model.NexradStation;
 import com.nexradnow.android.model.NexradUpdate;
 import com.nexradnow.android.services.DataRefreshIntent;
 import com.nexradnow.android.services.EventBusProvider;
-import com.nexradnow.android.services.LocationFinder;
 import com.nexradnow.android.services.LocationInfoIntent;
-import com.nexradnow.android.services.NexradDataManager;
+import com.nexradnow.android.views.RadarBitmapView;
 import roboguice.RoboGuice;
 import roboguice.activity.RoboActionBarActivity;
 
-import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 
+public class NexradView extends RoboActionBarActivity implements
+        GoogleApiClient.ConnectionCallbacks,
+        GoogleApiClient.OnConnectionFailedListener,
+        LocationListener {
 
-public class NexradView extends RoboActionBarActivity {
+    private static final int REQUEST_RESOLVE_ERROR = 1001;
+    private final static int CONNECTION_FAILURE_RESOLUTION_REQUEST = 9000;
+    private static final String TAG="NexradView";
 
-    @Inject
-    protected LocationFinder locationFinder;
+    private static final String[] INITIAL_PERMS={
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.INTERNET
+    };
+    private static final int INITIAL_REQUEST=1337;
 
     @Inject
     protected EventBusProvider eventBusProvider;
 
     protected Toast prevToast;
     protected AppMessage.Type prevToastType;
+    protected boolean mResolvingError = false;
+
+
+    protected GoogleApiClient mGoogleApiClient;
+    private LocationRequest mLocationRequest;
+
+    protected BroadcastReceiver receiver;
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
+        //RadarBitmapView radarView = (RadarBitmapView)findViewById(R.id.radarView);
+        //outState.putBundle("com.nexradnow.android.radarViewState", radarView.writeBundle());
     }
     @Override
     protected void onRestoreInstanceState(Bundle savedInstanceState) {
         super.onRestoreInstanceState(savedInstanceState);
+        //Bundle viewBundle = savedInstanceState.getBundle("com.nexradnow.android.radarViewState");
+        //if (viewBundle != null) {
+        //    RadarBitmapView radarView = (RadarBitmapView)findViewById(R.id.radarView);
+        //    radarView.readBundle(viewBundle);
+        //}
     }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        RoboGuice.injectMembers(this, this);
         setContentView(R.layout.activity_nexrad_view);
         eventBusProvider.getEventBus().register(this);
-        // LatLongCoordinates coords = locationFinder.getCurrentCoords();
-        // if (coords != null) {
-        //     eventBusProvider.getEventBus().post(new LocationChangeEvent(coords));
-        // }
-        ((NexradApp)getApplication()).requestCurrentLocation();
+        mGoogleApiClient = new GoogleApiClient.Builder(this)
+                .addConnectionCallbacks(this)
+                .addOnConnectionFailedListener(this)
+                .addApi(LocationServices.API)
+                .build();
+        // Create the LocationRequest object
+        mLocationRequest = LocationRequest.create()
+                .setPriority(LocationRequest.PRIORITY_LOW_POWER)
+                .setInterval(10 * 60 * 1000)        // 10 seconds, in milliseconds
+                .setFastestInterval(1 * 60 * 1000); // 1 second, in milliseconds
+        if (PackageManager.PERMISSION_GRANTED != ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)) {
+            ActivityCompat.requestPermissions(this, INITIAL_PERMS, INITIAL_REQUEST);
+        }
+        if (PreferenceManager.getDefaultSharedPreferences(this).getString(SettingsActivity.KEY_PREF_NEXRAD_EMAILADDRESS, null) == null) {
+            startSettings(true);
+        }
     }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (mGoogleApiClient.isConnected()&&PackageManager.PERMISSION_GRANTED==
+                ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)) {
+            onConnected(null);
+        }
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        if (mGoogleApiClient.isConnected()) {
+            mGoogleApiClient.disconnect();
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        mGoogleApiClient.connect();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        eventBusProvider.getEventBus().unregister(this);
+        RadarBitmapView radarView = (RadarBitmapView)findViewById(R.id.radarView);
+        if (radarView != null) {
+            radarView.releaseBitmap();
+        }
+    }
+
+    @Override
+    public void onConnected(Bundle bundle) {
+        // Register for location updates
+        Location location = LocationServices.FusedLocationApi.getLastLocation(mGoogleApiClient);
+        if (location == null) {
+            if (PackageManager.PERMISSION_GRANTED==ContextCompat.checkSelfPermission(this,Manifest.permission.ACCESS_FINE_LOCATION)) {
+                // enable location updates
+                LocationServices.FusedLocationApi.requestLocationUpdates(mGoogleApiClient, mLocationRequest, this);
+            }
+        }
+        else {
+            onLocationChanged(location);
+        }
+
+    }
+
+    @Override
+    public void onConnectionSuspended(int i) {
+
+    }
+
+    @Override
+    public void onConnectionFailed(ConnectionResult connectionResult) {
+        if (connectionResult.hasResolution()) {
+            try {
+                // Start an Activity that tries to resolve the error
+                connectionResult.startResolutionForResult(this, CONNECTION_FAILURE_RESOLUTION_REQUEST);
+            } catch (IntentSender.SendIntentException e) {
+                Log.e(TAG,"Resolution of connection error failed",e);
+                eventBusProvider.getEventBus().post(new AppMessage("error resolving connection failure", AppMessage.Type.ERROR));
+            }
+        } else {
+            Log.i(TAG, "Location services connection failed with code " + connectionResult.getErrorCode());
+            eventBusProvider.getEventBus().post(new AppMessage("error connecting to GooglePlay services: "
+                    +connectionResult.getErrorCode(), AppMessage.Type.ERROR));
+        }
+
+    }
+
+    @Override
+    public void onLocationChanged(Location location) {
+        LatLongCoordinates locationLatLong = new LatLongCoordinates(location.getLatitude(), location.getLongitude());
+        if (((NexradApp)getApplication()).getLocationMode()== NexradApp.LocationMode.GPS) {
+            LocationChangeEvent event = new LocationChangeEvent(locationLatLong);
+            eventBusProvider.getEventBus().post(event);
+        }
+    }
+
+    public void onEvent(LocationChangeEvent location) {
+        RadarBitmapView radarView = (RadarBitmapView)findViewById(R.id.radarView);
+        radarView.onEvent(location);
+    }
 
     public void onEvent(AppMessage message) {
         // TODO: use different styles for errors vs. other types of messages
@@ -84,6 +219,10 @@ public class NexradView extends RoboActionBarActivity {
         prevToastType = message.getType();
     }
 
+    public void onEvent(NexradUpdate update) {
+        RadarBitmapView radarView = (RadarBitmapView)findViewById(R.id.radarView);
+        radarView.onEvent(update);
+    }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -101,7 +240,7 @@ public class NexradView extends RoboActionBarActivity {
 
         //noinspection SimplifiableIfStatement
         if (id == R.id.action_settings) {
-            startSettings();
+            startSettings(false);
             return true;
         }
 
@@ -118,8 +257,11 @@ public class NexradView extends RoboActionBarActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    private void startSettings() {
+    private void startSettings(boolean forceEmail) {
         Intent intent = new Intent(this, SettingsActivity.class);
+        if (forceEmail) {
+            intent.putExtra("com.nexradnow.android.forceEmailPreference", true);
+        }
         startActivity(intent);
     }
 

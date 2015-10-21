@@ -2,6 +2,7 @@ package com.nexradnow.android.views;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -9,7 +10,10 @@ import android.graphics.Point;
 import android.graphics.PointF;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.os.Bundle;
 import android.os.Handler;
+import android.os.Parcel;
+import android.os.Parcelable;
 import android.support.v4.view.GestureDetectorCompat;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -27,7 +31,6 @@ import com.nexradnow.android.model.LocationChangeEvent;
 import com.nexradnow.android.model.NexradProduct;
 import com.nexradnow.android.model.NexradStation;
 import com.nexradnow.android.model.NexradUpdate;
-import com.nexradnow.android.model.ProductRequestMessage;
 import com.nexradnow.android.nexradproducts.NexradRenderer;
 import com.nexradnow.android.nexradproducts.RendererInventory;
 import com.nexradnow.android.services.EventBusProvider;
@@ -42,7 +45,9 @@ import ucar.nc2.Dimension;
 import ucar.nc2.NetcdfFile;
 import ucar.nc2.Variable;
 
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.io.Serializable;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
@@ -62,14 +67,6 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
 
     public static String TAG = "RADARBITMAPVIEW";
 
-    @Inject
-    protected Context ctx;
-
-    @Inject
-    protected EventBusProvider eventBusProvider;
-
-    @Inject
-    protected RendererInventory rendererInventory;
 
     // Helper to detect gestures
     private GestureDetectorCompat mDetector;
@@ -79,6 +76,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
      */
     private Map<NexradStation, List<NexradProduct>> productDisplay;
 
+    private RendererInventory rendererInventory;
     /**
      * Computed oldest timestamp of data on display
      */
@@ -115,9 +113,9 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     protected Rect bitmapPixelSize;
 
     /**
-     * The subsection of the backing bitmap that is currently being displayed
+     * Point that display is currently centered on.
      */
-    protected Rect bitmapClipRect;
+    protected Point viewCenter;
 
     /**
      * The current display density, used to scale pixel sizes
@@ -153,9 +151,10 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     }
 
     private void init() {
-        RoboGuice.getInjector(getContext()).injectMembers(this);
-        eventBusProvider.getEventBus().register(this);
-        mDetector = new GestureDetectorCompat(ctx,this);
+        Log.d(TAG,"creating view instance");
+        setSaveEnabled(true);
+        rendererInventory = new RendererInventory();
+        mDetector = new GestureDetectorCompat(getContext(),this);
         displayDensity = getResources().getDisplayMetrics().density;
         // Invalidate the display every minute (or so) to allow timestamp to repaint
         final Handler handler = new Handler();
@@ -183,36 +182,9 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
 
     @Override
     public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
-        // Shift the clipping rect around to force a different part of the backing bitmap to be displayed
-        if (bitmapClipRect==null) { return true; }
-        if (distanceX > 0) {
-            // move to the right
-            bitmapClipRect.right += distanceX;
-            if (bitmapClipRect.right > bitmapPixelSize.right) {
-                bitmapClipRect.right = bitmapPixelSize.right;
-            }
-            bitmapClipRect.left = bitmapClipRect.right - viewWidth;
-        } else {
-            bitmapClipRect.left += distanceX;
-            if (bitmapClipRect.left < 0) {
-                bitmapClipRect.left = 0;
-            }
-            bitmapClipRect.right = bitmapClipRect.left + viewWidth;
-        }
-        if (distanceY < 0) {
-            // move up - is this counterintuitive or what?
-            bitmapClipRect.top += distanceY;
-            if (bitmapClipRect.top < 0) {
-                bitmapClipRect.top = 0;
-            }
-            bitmapClipRect.bottom = bitmapClipRect.top + viewHeight;
-        } else {
-            bitmapClipRect.bottom += distanceY;
-            if (bitmapClipRect.bottom > bitmapPixelSize.bottom) {
-                bitmapClipRect.bottom = bitmapPixelSize.bottom;
-            }
-            bitmapClipRect.top = bitmapClipRect.bottom - viewHeight;
-        }
+        // Shift the center point as needed
+        viewCenter.x += distanceX;
+        viewCenter.y += distanceY;
         this.invalidate();
         return true;
     }
@@ -239,7 +211,12 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         super.onSizeChanged(w, h, oldw, oldh);
         viewHeight = h;
         viewWidth = w;
-        eventBusProvider.getEventBus().post(new ProductRequestMessage());
+        if ((selectedLocation!=null)&&(productDisplay!=null)&&(!productDisplay.isEmpty())) {
+            if ((viewWidth > 0)&&(viewHeight>0)) {
+                regenerateBitmap();
+                this.invalidate();
+            }
+        }
     }
 
     @Override
@@ -263,12 +240,26 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         }
         Paint brush = drawPaint;
 
-        if (bitmapClipRect == null) {
-            int viewXOffset = (bitmapPixelSize.width() - viewWidth) / 2;
-            int viewYOffset = (bitmapPixelSize.height() - viewHeight) / 2;
-
-            bitmapClipRect = new Rect(viewXOffset, viewYOffset, viewXOffset + viewWidth, viewYOffset + viewHeight);
+        Rect bitmapClipRect = new Rect();
+        bitmapClipRect.left = viewCenter.x - viewWidth/2;
+        if (bitmapClipRect.left < 0) {
+            bitmapClipRect.left = 0;
         }
+        bitmapClipRect.right = bitmapClipRect.left+viewWidth;
+        if (bitmapClipRect.right > bitmapPixelSize.width()) {
+            bitmapClipRect.right = bitmapPixelSize.width();
+        }
+        viewCenter.x = bitmapClipRect.centerX();
+        bitmapClipRect.top = viewCenter.y - viewHeight/2;
+        if (bitmapClipRect.top < 0) {
+            bitmapClipRect.top = 0;
+        }
+        bitmapClipRect.bottom = bitmapClipRect.top + viewHeight;
+        if (bitmapClipRect.bottom > bitmapPixelSize.height()) {
+            bitmapClipRect.bottom = bitmapPixelSize.height();
+        }
+        viewCenter.y = bitmapClipRect.centerY();
+
         canvas.drawBitmap(backingBitmap, bitmapClipRect, destRect, brush);
 
         // Layer timestamp on graphic
@@ -356,7 +347,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
      * @param updateProducts
      */
     public void onEvent(NexradUpdate updateProducts) {
-        Log.d(TAG, "update received: " + updateProducts.toString());
+        Log.d(TAG, "update received: " + updateProducts.toString()+" -> this:"+this.toString());
         this.productDisplay = updateProducts.getUpdateProduct();
         this.selectedLocation = updateProducts.getCenterPoint();
         regenerateBitmap();
@@ -407,6 +398,15 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         canvas.drawCircle(locationPoint.x,locationPoint.y,scalePixels(3),brush);
     }
 
+    /**
+     * Given a point in lat/long coordinates, and a pixel area of size pixelRect that covers
+     * the region described by lat/long region coordRect, compute the pixel location of this
+     * point in that space.
+     * @param coords
+     * @param coordRect
+     * @param pixelRect
+     * @return
+     */
     private Point scaleCoordinate (LatLongCoordinates coords, LatLongRect coordRect, Rect pixelRect) {
         double latOffset = coords.getLatitude() - coordRect.bottom;
         double longOffset = coords.getLongitude() - coordRect.left;
@@ -450,6 +450,14 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
                 stationPoint.x + scalePixels(12), stationPoint.y + scalePixels(4), brush);
     }
 
+    public void releaseBitmap() {
+        if (backingBitmap != null) {
+            Log.d(TAG,"recycling backing bitmap");
+            backingBitmap.recycle();
+            backingBitmap = null;
+            System.gc();
+        }
+    }
 
     /**
      * Generate the backing bitmap for the display.
@@ -520,6 +528,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
             if ((backingBitmap.getHeight()!=bitmapPixelSize.height())||
                     (backingBitmap.getWidth()!=bitmapPixelSize.width())) {
                 // Size difference
+                Log.d(TAG,"recycling backing bitmap");
                 backingBitmap.recycle();
                 backingBitmap = null;
                 System.gc();
@@ -529,8 +538,15 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
             }
         }
         if (backingBitmap == null) {
-            backingBitmap = Bitmap.createBitmap(bitmapPixelSize.width(), bitmapPixelSize.height(), Bitmap.Config.ARGB_8888);
+            Log.d(TAG, "allocating backing bitmap");
+            try {
+                backingBitmap = Bitmap.createBitmap(bitmapPixelSize.width(), bitmapPixelSize.height(), Bitmap.Config.ARGB_4444);
+            } catch (OutOfMemoryError oom) {
+                Log.e(TAG,"out of memory when creating bitmap");
+            }
         }
+        // Compute the center point
+        viewCenter = new Point(bitmapPixelSize.centerX(), bitmapPixelSize.centerY());
 
     }
 
@@ -544,8 +560,13 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         if (renderer == null) {
             throw new NexradNowException("no renderer found for product code "+radarData.getProductCode());
         }
-
-        LatLongRect result = renderer.findExtents(radarData);
+        LatLongRect result = null;
+        try {
+            result = renderer.findExtents(radarData);
+        } catch (Exception ex) {
+            Log.e(TAG,"error computing enclosing rect for "+radarData.getStation().getIdentifier(),ex);
+            result = null;
+        }
         return result;
     }
 
@@ -560,13 +581,19 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
             productPaint = new Paint();
         }
         NexradRenderer renderer = rendererInventory.getRenderer(product.getProductCode());
-        renderer.renderToCanvas(canvas, product, productPaint, scaler);
-        lastRenderer = renderer;
+        if (renderer != null) {
+            try {
+                renderer.renderToCanvas(canvas, product, productPaint, scaler);
+                lastRenderer = renderer;
+            } catch (Exception ex) {
+                Log.e(TAG,"error rendering product for station "+product.getStation().getIdentifier(),ex);
+            }
+        }
     }
 
     private void drawMap(Canvas canvas, LatLongRect latLongRect, Rect pixelSize) {
         try {
-            InputStream is = ctx.getResources().openRawResource(R.raw.cb_2014_us_state_20m);
+            InputStream is = getContext().getResources().openRawResource(R.raw.cb_2014_us_state_20m);
             ShapeFileReader sr = new ShapeFileReader(is);
             ShapeFileHeader hdr = sr.getHeader();
             switch (hdr.getShapeType()) {
@@ -595,8 +622,6 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
             is.close();
         } catch (Exception ex) {
             Log.e(TAG,"error while reading outline shape file", ex);
-            AppMessage message = new AppMessage(ex.toString(), AppMessage.Type.ERROR);
-            eventBusProvider.getEventBus().post(message);
         }
     }
 
@@ -647,4 +672,66 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         }
     }
 
+    private Bundle writeBundle() {
+        Bundle savedState = new Bundle();
+        if (dataTimestamp != null) {
+            savedState.putSerializable("timestamp", dataTimestamp);
+        }
+        if (productDisplay != null) {
+            savedState.putSerializable("productDisplay", (Serializable) productDisplay);
+        }
+        if (viewCenter != null) {
+            savedState.putInt("viewCenterX", viewCenter.x);
+            savedState.putInt("viewCenterY", viewCenter.y);
+        }
+        if (selectedLocation != null) {
+            savedState.putSerializable("selectedLocation", selectedLocation);
+        }
+
+        return savedState;
+    }
+
+    private void readBundle(Bundle savedState) {
+        selectedLocation = (LatLongCoordinates)savedState.getSerializable("selectedLocation");
+        dataTimestamp = (Calendar)savedState.getSerializable("timestamp");
+        productDisplay = (Map)savedState.getSerializable("productDisplay");
+        if ((selectedLocation!=null)&&(productDisplay!=null)&&(!productDisplay.isEmpty())) {
+            if ((viewWidth > 0)&&(viewHeight>0)) {
+                regenerateBitmap();
+                this.invalidate();
+            }
+        }
+        int x = savedState.getInt("viewCenter.x", -1);
+        if (x != -1) {
+            viewCenter = new Point();
+            viewCenter.x = x;
+            int y = savedState.getInt("viewCenter.y", -1);
+            if (y != -1) {
+                viewCenter.y = y;
+            }
+        }
+    }
+
+    @Override
+    protected Parcelable onSaveInstanceState() {
+        Parcelable state = super.onSaveInstanceState();
+        Bundle localState = writeBundle();
+        localState.putParcelable("superState", state);
+        return localState;
+    }
+
+    @Override
+    protected void onRestoreInstanceState(Parcelable state) {
+        if (state instanceof Bundle) {
+            readBundle((Bundle)state);
+            state = ((Bundle) state).getParcelable("superState");
+        }
+        super.onRestoreInstanceState(state);
+    }
+/*
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        releaseBitmap();
+    } */
 }

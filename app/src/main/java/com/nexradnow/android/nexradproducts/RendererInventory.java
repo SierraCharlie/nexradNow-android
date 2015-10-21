@@ -3,6 +3,7 @@ package com.nexradnow.android.nexradproducts;
 import com.google.inject.Singleton;
 import org.atteo.classindex.ClassIndex;
 
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,7 +22,9 @@ public class RendererInventory {
         List<NexradRenderer> rendererList = new ArrayList<NexradRenderer>();
         for (Class<?> klass : ClassIndex.getSubclasses(NexradRenderer.class)) {
             try {
-                rendererList.add(((Class<NexradRenderer>) klass).newInstance());
+                if (!Modifier.isAbstract(klass.getModifiers())) {
+                    rendererList.add(((Class<NexradRenderer>) klass).newInstance());
+                }
             } catch (Exception ex) {
                 throw new IllegalStateException("cannot instantiate a renderer", ex);
             }

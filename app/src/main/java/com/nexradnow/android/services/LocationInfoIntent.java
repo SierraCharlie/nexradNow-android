@@ -43,65 +43,10 @@ public class LocationInfoIntent extends RoboIntentService {
         super(LocationInfoIntent.class.getName());
     }
 
-    protected class CurrentLocationFinder implements Runnable, GoogleApiClient.ConnectionCallbacks,
-            GoogleApiClient.OnConnectionFailedListener {
-        Intent srcIntent;
-        int status = STATUS_ERROR;
-        LatLongCoordinates location;
-
-        protected GoogleApiClient apiClient;
-        @Override
-        public void run() {
-            apiClient = new GoogleApiClient.Builder(ctx)
-                    .addConnectionCallbacks(this)
-                    .addOnConnectionFailedListener(this)
-                    .addApi(LocationServices.API)
-                    .build();
-            apiClient.connect();
-        }
-
-        @Override
-        public void onConnected(Bundle bundle) {
-            Location lastLocation = LocationServices.FusedLocationApi.getLastLocation(
-                    apiClient);
-            if (lastLocation != null) {
-                location = new LatLongCoordinates(lastLocation.getLatitude(), lastLocation.getLongitude());
-                status = STATUS_FINISHED;
-                srcIntent.putExtra("com.nexradnow.android.status", STATUS_FINISHED);
-                srcIntent.putExtra("com.nexradnow.android.coords", location);
-            } else {
-                srcIntent.putExtra("com.nexradnow.android.errmsg", "no current location could be found");
-                srcIntent.putExtra("com.nexradnow.android.status", STATUS_ERROR);
-            }
-            LocalBroadcastManager.getInstance(ctx).sendBroadcast(srcIntent);
-        }
-
-        @Override
-        public void onConnectionSuspended(int i) {
-            location = null;
-            status = STATUS_ERROR;
-            srcIntent.putExtra("com.nexradnow.android.errmsg", "connection suspended");
-            srcIntent.putExtra("com.nexradnow.android.status", STATUS_ERROR);
-            LocalBroadcastManager.getInstance(ctx).sendBroadcast(srcIntent);
-       }
-
-        @Override
-        public void onConnectionFailed(ConnectionResult connectionResult) {
-            location = null;
-            status = STATUS_ERROR;
-            srcIntent.putExtra("com.nexradnow.android.errmsg", "connection failed");
-            srcIntent.putExtra("com.nexradnow.android.status", STATUS_ERROR);
-            LocalBroadcastManager.getInstance(ctx).sendBroadcast(srcIntent);
-        }
-    }
 
     @Override
     protected void onHandleIntent(Intent intent) {
-        if (GPSLOCATIONACTION.equals(intent.getAction())) {
-            CurrentLocationFinder finder = new CurrentLocationFinder();
-            finder.srcIntent = intent;
-            finder.run();
-        } else if (GEOCODELOCATIONACTION.equals(intent.getAction())) {
+        if (GEOCODELOCATIONACTION.equals(intent.getAction())) {
             Geocoder coder = new Geocoder(ctx, Locale.US);
             LatLongCoordinates results = null;
             try {

@@ -29,4 +29,12 @@
         android:summary="@string/pref_nexrad_stationdistance_summ"
         android:defaultValue="160"/>
 
+    <ListPreference
+        android:key="pref_nexrad_product"
+        android:entries="@array/nexradProductDescriptions"
+        android:entryValues="@array/nexradProductCodes"
+        android:title="Nexrad Product to Display"
+        android:summary="Select specific Nexrad output for display"
+        android:defaultValue="p38cr" />
+
 </PreferenceScreen>

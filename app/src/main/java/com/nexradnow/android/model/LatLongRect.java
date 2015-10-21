@@ -1,13 +1,16 @@
 package com.nexradnow.android.model;
 
 import android.graphics.RectF;
+import android.os.Parcelable;
+
+import java.io.Serializable;
 
 /**
  * Manipulate a region defined by latitude and longitudes.
  *
  * Created by hobsonm on 9/29/15.
  */
-public class LatLongRect {
+public class LatLongRect implements Serializable {
 
     public double top;
     public double bottom;

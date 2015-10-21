@@ -23,7 +23,6 @@ import com.nexradnow.android.model.LocationSelectionEvent;
 import com.nexradnow.android.model.NexradStation;
 import com.nexradnow.android.services.DataRefreshIntent;
 import com.nexradnow.android.services.EventBusProvider;
-import com.nexradnow.android.services.LocationInfoIntent;
 import roboguice.RoboGuice;
 import roboguice.activity.RoboActivity;
 
