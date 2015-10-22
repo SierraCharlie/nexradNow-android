@@ -3,7 +3,6 @@ package com.nexradnow.android.services;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
-import android.support.annotation.NonNull;
 import android.util.Log;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -15,15 +14,11 @@ import com.nexradnow.android.model.NexradFTPContents;
 import com.nexradnow.android.model.NexradProduct;
 import com.nexradnow.android.model.NexradProductCache;
 import com.nexradnow.android.model.NexradStation;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.ListUtils;
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.net.ftp.FTP;
 import org.apache.commons.net.ftp.FTPClient;
 import org.apache.commons.net.ftp.FTPClientConfig;
 import org.apache.commons.net.ftp.FTPFile;
-import org.apache.commons.net.ftp.FTPHTTPClient;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -36,19 +31,13 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.URL;
 import java.net.URLConnection;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Calendar;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -78,7 +67,7 @@ public class NexradDataManager {
             // Load from cache
             try {
                 InputStream fis = new FileInputStream(cachedList);
-                ObjectInputStream ois = new ObjectInputStream(new FileInputStream(cachedList));
+                ObjectInputStream ois = new ObjectInputStream(fis);
                 results = (List<NexradStation>)ois.readObject();
                 ois.close();
                 fis.close();
@@ -175,6 +164,9 @@ public class NexradDataManager {
         conf.setServerTimeZoneId("UTC");
         FTPClient ftpClient = new FTPClient();
         ftpClient.configure(conf);
+        ftpClient.setDataTimeout(20000);
+        ftpClient.setConnectTimeout(20000);
+        ftpClient.setDefaultTimeout(20000);
         try {
             // Check cache for file list
             Calendar nowCal = Calendar.getInstance();
@@ -229,24 +221,31 @@ public class NexradDataManager {
                             }
                         }
                         InputStream stream = ftpClient.retrieveFileStream(file.getName());
-                        byte[] productBytes = null;
-                        try {
-                            productBytes = IOUtils.toByteArray(stream);
-                            stream.close();
-                        } catch (Exception ex) {
-                            Log.e(TAG, "data transfer error for "+ftpDir+"/"+file.getName(), ex);
+                        if (stream == null) {
+                            Log.e(TAG,"data transfer error for "+ftpDir+ftpProductStationPath+" "+file.getName()+" reply:"+ ftpClient.getReplyString());
                             ftpClient.completePendingCommand();
-                            continue;
+                        } else {
+                            byte[] productBytes = null;
+                            try {
+                                productBytes = IOUtils.toByteArray(stream);
+                                stream.close();
+                            } catch (Exception ex) {
+                                Log.e(TAG, "data transfer error for " + ftpDir + "/" + file.getName(), ex);
+                                ftpClient.completePendingCommand();
+                                continue;
+                            }
+                            if (!ftpClient.completePendingCommand()) {
+                                String status = ftpClient.getStatus();
+                                throw new IOException("FTPClient completePendingCommmand() returned error:" + status);
+                            }
+                            product = new NexradProduct(station, file, productCode, file.getTimestamp(), productBytes);
+                            // add to cache
+                            productCache.getProducts().add(product);
                         }
-                        if (!ftpClient.completePendingCommand()) {
-                            String status = ftpClient.getStatus();
-                            throw new IOException("FTPClient completePendingCommmand() returned error:" + status);
-                        }
-                        product = new NexradProduct(station, file, productCode, file.getTimestamp(), productBytes);
-                        // add to cache
-                        productCache.getProducts().add(product);
                     }
-                    results.add(product);
+                    if (product != null) {
+                        results.add(product);
+                    }
                 }
             }
             // Sort so that items in list are in order of most recent -> least recent
@@ -264,7 +263,7 @@ public class NexradDataManager {
             Collections.sort(results,comparator);
         } catch (Exception ex) {
             Log.e(TAG,"data transfer error["+station+":"+productCode+"]",ex);
-            throw new NexradNowException("tgftp data transfer error ["+station+":"+productCode+"]"+ex.toString());
+            throw new NexradNowException("tgftp data transfer error ["+station.getIdentifier()+":"+productCode+"]"+ex.toString());
         }
         return results;
     }

@@ -9,6 +9,7 @@ import android.content.res.Configuration;
 import android.preference.PreferenceManager;
 import android.support.multidex.MultiDexApplication;
 import android.support.v4.content.LocalBroadcastManager;
+import android.util.Log;
 import com.google.inject.Inject;
 import com.nexradnow.android.model.AppMessage;
 import com.nexradnow.android.model.LatLongCoordinates;
@@ -22,8 +23,16 @@ import com.nexradnow.android.services.EventBusProvider;
 import com.nexradnow.android.services.LocationInfoIntent;
 import roboguice.RoboGuice;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Application class that contains the intent launcher for the data refresh.
@@ -33,6 +42,8 @@ import java.util.Map;
 public class NexradApp  extends MultiDexApplication {
 
     protected static final String TAG="NexradApp";
+
+    protected static final String CACHELOCATIONFILE="LocationData";
 
     @Inject
     protected EventBusProvider eventBusProvider;
@@ -63,13 +74,13 @@ public class NexradApp  extends MultiDexApplication {
                         LatLongCoordinates centerPoint = (LatLongCoordinates) intent.getSerializableExtra("com.nexradnow.android.coords");
                         NexradUpdate nexradUpdate = new NexradUpdate(products, centerPoint);
                         eventBusProvider.getEventBus().post(nexradUpdate);
-                    }
-                } else if (status == DataRefreshIntent.STATUS_ERROR) {
-                    postMessage(intent.getStringExtra("com.nexradnow.android.errmsg"), AppMessage.Type.ERROR);
-                } else if (status == DataRefreshIntent.STATUS_RUNNING) {
-                    String msgText = intent.getStringExtra("com.nexradnow.android.statusmsg");
-                    if (msgText != null) {
-                        postMessage(msgText, AppMessage.Type.PROGRESS);
+                    } else if (status == DataRefreshIntent.STATUS_ERROR) {
+                        postMessage(intent.getStringExtra("com.nexradnow.android.errmsg"), AppMessage.Type.ERROR);
+                    } else if (status == DataRefreshIntent.STATUS_RUNNING) {
+                        String msgText = intent.getStringExtra("com.nexradnow.android.statusmsg");
+                        if (msgText != null) {
+                            postMessage(msgText, AppMessage.Type.PROGRESS);
+                        }
                     }
                 } else  if (intent.getAction().equals(LocationInfoIntent.GEOCODELOCATIONACTION)){
                     // TODO: handle location events
@@ -91,6 +102,49 @@ public class NexradApp  extends MultiDexApplication {
         filter.addAction(LocationInfoIntent.GEOCODELOCATIONACTION);
         filter.addAction(DataRefreshIntent.GETWXACTION);
         LocalBroadcastManager.getInstance(this).registerReceiver(receiver, filter);
+        lastKnownLocation = getCachedLocation();
+        if (lastKnownLocation == null) {
+            // come up with a fixed default location!
+            lastKnownLocation = new LatLongCoordinates(32.77,-96.79);
+        }
+    }
+
+    /**
+     * Stash the specified coordinates in the cache so they can be restored on app startup
+     * @param coords
+     */
+    protected void cacheLocation(LatLongCoordinates coords) {
+        File cachedLocation = new File(this.getCacheDir(),CACHELOCATIONFILE);
+        try {
+            OutputStream fos = new FileOutputStream(cachedLocation);
+            ObjectOutputStream oos = new ObjectOutputStream(fos);
+            oos.writeObject(coords);
+            oos.close();
+            fos.close();
+        } catch (Exception ex) {
+            Log.e(TAG, "error writing current location to cache", ex);
+        }
+    }
+
+    /**
+     * Retrieve the current location from the cache file, if it exists and we can read it.
+     * @return cached location
+     */
+    protected LatLongCoordinates getCachedLocation() {
+        LatLongCoordinates coords = null;
+        File cachedLocation = new File(this.getCacheDir(),CACHELOCATIONFILE);
+        if (cachedLocation.exists()&&cachedLocation.canRead()) {
+            try {
+                InputStream fis = new FileInputStream(cachedLocation);
+                ObjectInputStream ois = new ObjectInputStream(fis);
+                coords = (LatLongCoordinates)ois.readObject();
+                ois.close();
+                fis.close();
+            } catch (Exception ex) {
+                Log.e(TAG, "error reading current location from cache", ex);
+            }
+        }
+        return coords;
     }
 
     @Override
@@ -150,6 +204,7 @@ public class NexradApp  extends MultiDexApplication {
             }
             lastGpsLocation = locationChangeEvent.getCoordinates();
         }
+        cacheLocation(locationChangeEvent.getCoordinates());
         requestWxForLocation(locationChangeEvent.getCoordinates());
     }
 
@@ -177,5 +232,9 @@ public class NexradApp  extends MultiDexApplication {
 
     public void setLocationMode(LocationMode locationMode) {
         this.locationMode = locationMode;
+    }
+
+    public LatLongCoordinates getLastKnownLocation() {
+        return lastKnownLocation;
     }
 }

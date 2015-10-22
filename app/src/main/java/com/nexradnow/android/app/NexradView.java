@@ -53,7 +53,7 @@ public class NexradView extends RoboActionBarActivity implements
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.INTERNET
     };
-    private static final int INITIAL_REQUEST=1337;
+    private static final int INITIAL_REQUEST=37;
 
     @Inject
     protected EventBusProvider eventBusProvider;
@@ -86,6 +86,7 @@ public class NexradView extends RoboActionBarActivity implements
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        Log.d(TAG,"onCreate() + "+this.hashCode());
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_nexrad_view);
         eventBusProvider.getEventBus().register(this);
@@ -104,6 +105,11 @@ public class NexradView extends RoboActionBarActivity implements
         }
         if (PreferenceManager.getDefaultSharedPreferences(this).getString(SettingsActivity.KEY_PREF_NEXRAD_EMAILADDRESS, null) == null) {
             startSettings(true);
+        } else {
+            if (((NexradApp)getApplication()).getLastKnownLocation() != null) {
+                RadarBitmapView radarView = (RadarBitmapView)findViewById(R.id.radarView);
+                radarView.onEvent(new LocationChangeEvent(((NexradApp)getApplication()).getLastKnownLocation()));
+            }
         }
     }
 
@@ -137,6 +143,7 @@ public class NexradView extends RoboActionBarActivity implements
 
     @Override
     protected void onDestroy() {
+        Log.d(TAG,"onDestroy() + "+this.hashCode());
         super.onDestroy();
         eventBusProvider.getEventBus().unregister(this);
         RadarBitmapView radarView = (RadarBitmapView)findViewById(R.id.radarView);
@@ -203,23 +210,17 @@ public class NexradView extends RoboActionBarActivity implements
         int duration = Toast.LENGTH_LONG;
         if (message.getType() == AppMessage.Type.ERROR) {
             duration = Toast.LENGTH_LONG;
-        } else if (message.getType() == AppMessage.Type.INFO) {
-            duration = Toast.LENGTH_SHORT;
-        } else if (message.getType() == AppMessage.Type.PROGRESS) {
-            if (prevToast != null) {
-                if (prevToastType == AppMessage.Type.PROGRESS) {
-                    prevToast.cancel();
-                }
-            }
+            Toast msgToast = Toast.makeText(this, message.getMessage(), duration);
+            msgToast.show();
+        } else {
+            // Forward to the view for display
+            RadarBitmapView radarView = (RadarBitmapView)findViewById(R.id.radarView);
+            radarView.onEvent(message);
         }
-
-        Toast msgToast = Toast.makeText(this, message.getMessage(), duration);
-        msgToast.show();
-        prevToast = msgToast;
-        prevToastType = message.getType();
     }
 
     public void onEvent(NexradUpdate update) {
+        Log.d(TAG,"onEvent(NexradUpdate "+update.hashCode()+") + "+this.hashCode());
         RadarBitmapView radarView = (RadarBitmapView)findViewById(R.id.radarView);
         radarView.onEvent(update);
     }

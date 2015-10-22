@@ -188,7 +188,7 @@ lon2 = lon1 + atan2(sin(θ)*sin(d/R)*cos(lat1), cos(d/R)−sin(lat1)*sin(lat2))
                     prevPt3 = pt3;
                     stashedPts[gateIndex] = pt2;
                     // Do the drawing deed.
-                    float plotValue = (float)cellValue/50.0f;
+                    float plotValue = ((float)cellValue-5)/70.0f;
                     if (plotValue > 1) {
                         plotValue = 1.0f;
                     }

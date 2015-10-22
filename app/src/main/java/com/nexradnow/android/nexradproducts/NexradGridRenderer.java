@@ -102,7 +102,7 @@ public abstract class NexradGridRenderer implements NexradRenderer {
                         continue;
                     }
                     // Translate to location and fill rectangle with value
-                    float plotValue = (float)cellValue/50.0f;
+                    float plotValue = ((float)cellValue-5)/70.0f;
                     if (plotValue > 1) {
                         plotValue = 1.0f;
                     }

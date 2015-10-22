@@ -19,8 +19,10 @@ import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
+import com.google.inject.Inject;
 import com.nexradnow.android.app.R;
 import com.nexradnow.android.exception.NexradNowException;
+import com.nexradnow.android.model.AppMessage;
 import com.nexradnow.android.model.LatLongCoordinates;
 import com.nexradnow.android.model.LatLongRect;
 import com.nexradnow.android.model.LatLongScaler;
@@ -30,11 +32,13 @@ import com.nexradnow.android.model.NexradStation;
 import com.nexradnow.android.model.NexradUpdate;
 import com.nexradnow.android.nexradproducts.NexradRenderer;
 import com.nexradnow.android.nexradproducts.RendererInventory;
+import com.nexradnow.android.services.EventBusProvider;
 import org.nocrala.tools.gis.data.esri.shapefile.ShapeFileReader;
 import org.nocrala.tools.gis.data.esri.shapefile.header.ShapeFileHeader;
 import org.nocrala.tools.gis.data.esri.shapefile.shape.AbstractShape;
 import org.nocrala.tools.gis.data.esri.shapefile.shape.PointData;
 import org.nocrala.tools.gis.data.esri.shapefile.shape.shapes.AbstractPolyShape;
+import roboguice.RoboGuice;
 
 import java.io.InputStream;
 import java.io.Serializable;
@@ -55,7 +59,7 @@ import java.util.concurrent.TimeUnit;
 public class RadarBitmapView extends View implements GestureDetector.OnGestureListener,
     ScaleGestureDetector.OnScaleGestureListener {
 
-    public static String TAG = "RADARBITMAPVIEW";
+    public static String TAG = "RadarBitmapView";
 
 
     // Helper to detect gestures
@@ -72,6 +76,16 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
      * Computed oldest timestamp of data on display
      */
     private Calendar dataTimestamp;
+
+    /**
+     * Current (last) message shown on display
+     */
+    private AppMessage appMessage;
+
+    /**
+     * Time when last message was generated
+     */
+    private long appMessageTimestamp;
 
     /**
      * Location selected by user (typically current physical location)
@@ -205,10 +219,10 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         super.onSizeChanged(w, h, oldw, oldh);
         viewHeight = h;
         viewWidth = w;
-        if ((selectedLocation!=null)&&(productDisplay!=null)&&(!productDisplay.isEmpty())) {
+        if (selectedLocation!=null) {
             if ((viewWidth > 0)&&(viewHeight>0)) {
                 regenerateBitmap(null);
-                // this.invalidate();
+                this.invalidate();
             }
         }
     }
@@ -333,7 +347,30 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         } else {
             drawTimestamp(canvas, "No Data", null, Color.RED);
         }
+        if (appMessage != null) {
+            if (System.currentTimeMillis()-appMessageTimestamp > TimeUnit.MILLISECONDS.convert(10,TimeUnit.SECONDS)) {
+                appMessage = null;
+            } else {
+                drawMessage(canvas, appMessage);
+            }
+        }
 
+    }
+
+    private void drawMessage(Canvas canvas, AppMessage message) {
+        String text = message.getMessage();
+        int color = Color.GRAY;
+        Paint messagePaint = new Paint();
+        messagePaint.setColor(color);
+        Rect textBounds = new Rect();
+        messagePaint.setTextSize(scalePixels(15));
+        messagePaint.getTextBounds(text,0,text.length(),textBounds);
+        textBounds.bottom += scalePixels(10);
+        textBounds.right += scalePixels(10);
+        textBounds.offsetTo(scalePixels(10),scalePixels(10));
+        canvas.drawRoundRect(new RectF(textBounds), scalePixels(5), scalePixels(5), messagePaint);
+        messagePaint.setColor(Color.BLACK);
+        canvas.drawText(text, (float)(textBounds.left+scalePixels(5)),(float)(textBounds.bottom-scalePixels(5)),messagePaint);
     }
 
     /**
@@ -398,9 +435,13 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
      */
     public void onEvent(NexradUpdate updateProducts) {
         Log.d(TAG, "update received: " + updateProducts.toString()+" -> this:"+this.toString());
+        appMessage = new AppMessage("Rendering", AppMessage.Type.INFO);
+        appMessageTimestamp = System.currentTimeMillis();
+        this.invalidate();
         this.productDisplay = updateProducts.getUpdateProduct();
         this.selectedLocation = updateProducts.getCenterPoint();
         regenerateBitmap(null);
+        appMessage = null;
         this.invalidate();
     }
 
@@ -414,7 +455,20 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         regenerateBitmap(null);
         this.invalidate();
     }
+
+    public void onEvent(AppMessage appMessage) {
+        Log.d(TAG,"appMessage: "+appMessage.getType().toString()+" = "+appMessage.getMessage());
+        this.appMessage = appMessage;
+        this.appMessageTimestamp = System.currentTimeMillis();
+        this.invalidate();
+    }
+
+
     protected void regenerateBitmap(LatLongRect bitmapRegion) {
+        if ((viewWidth <= 0)||(viewHeight <= 0)) {
+            return;
+        }
+
         createBackingBitmap(bitmapRegion);
 
         Canvas bitmapCanvas = new Canvas(backingBitmap);
@@ -495,6 +549,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         Point stationPoint = scaleCoordinate(station.getCoords(), latLongRect, pixelSize);
 
         stationPaint.setColor(Color.DKGRAY);
+        stationPaint.setAlpha(128);
         if (hasData) {
             canvas.drawCircle(stationPoint.x, stationPoint.y, scalePixels(7), brush);
         } else {
@@ -513,6 +568,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
             stationPaint.setStrokeWidth(defaultStrokeWidth);
         }
         stationPaint.setColor(Color.BLACK);
+        stationPaint.setAlpha(180);
         canvas.drawText(station.getIdentifier(),
                 stationPoint.x + scalePixels(12), stationPoint.y + scalePixels(4), brush);
     }
@@ -810,6 +866,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
 
     @Override
     protected Parcelable onSaveInstanceState() {
+        Log.e(TAG,"onSaveInstanceState()");
         Parcelable state = super.onSaveInstanceState();
         Bundle localState = writeBundle();
         localState.putParcelable("superState", state);
@@ -818,6 +875,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
 
     @Override
     protected void onRestoreInstanceState(Parcelable state) {
+        Log.e(TAG,"onRestoreInstanceState()");
         if (state instanceof Bundle) {
             readBundle((Bundle)state);
             state = ((Bundle) state).getParcelable("superState");
