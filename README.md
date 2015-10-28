@@ -22,3 +22,5 @@ to Google Play when it is reasonably complete. Some of the features on the to-do
 * animation of weather products when possible
 
 Your suggestions welcome!
+
+[You can download the app from the Google Play "Beta" site] (https://play.google.com/apps/testing/com.nexradnow.android.app)

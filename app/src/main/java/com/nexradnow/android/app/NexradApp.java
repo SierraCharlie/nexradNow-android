@@ -6,18 +6,22 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
 import android.preference.PreferenceManager;
 import android.support.multidex.MultiDexApplication;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 import com.google.inject.Inject;
 import com.nexradnow.android.model.AppMessage;
+import com.nexradnow.android.model.BitmapEvent;
 import com.nexradnow.android.model.LatLongCoordinates;
+import com.nexradnow.android.model.LatLongRect;
 import com.nexradnow.android.model.LocationChangeEvent;
 import com.nexradnow.android.model.LocationSelectionEvent;
 import com.nexradnow.android.model.NexradProduct;
 import com.nexradnow.android.model.NexradStation;
 import com.nexradnow.android.model.NexradUpdate;
+import com.nexradnow.android.services.BitmapRenderingIntent;
 import com.nexradnow.android.services.DataRefreshIntent;
 import com.nexradnow.android.services.EventBusProvider;
 import com.nexradnow.android.services.LocationInfoIntent;
@@ -95,12 +99,28 @@ public class NexradApp  extends MultiDexApplication {
                             postMessage(msgText, AppMessage.Type.PROGRESS);
                         }
                     }
+                } else if (intent.getAction().equals(BitmapRenderingIntent.RENDERACTION)) {
+                    if (status == BitmapRenderingIntent.STATUS_FINISHED) {
+                        Bitmap result = (Bitmap)intent.getParcelableExtra("com.nexradnow.android.bitmap");
+                        LatLongRect resultRect = (LatLongRect)intent.getSerializableExtra("com.nexradnow.android.latLongRect");
+                        BitmapEvent event = new BitmapEvent(result, resultRect);
+                        eventBusProvider.getEventBus().post(event);
+                    } else if (status == BitmapRenderingIntent.STATUS_ERROR) {
+                        postMessage(intent.getStringExtra("com.nexradnow.android.errmsg"), AppMessage.Type.ERROR);
+                    } else if (status == BitmapRenderingIntent.STATUS_RUNNING) {
+                        String msgText = intent.getStringExtra("com.nexradnow.android.statusmsg");
+                        if (msgText != null) {
+                            postMessage(msgText, AppMessage.Type.PROGRESS);
+                        }
+                    }
+
                 }
             }
         };
         IntentFilter filter = new IntentFilter();
         filter.addAction(LocationInfoIntent.GEOCODELOCATIONACTION);
         filter.addAction(DataRefreshIntent.GETWXACTION);
+        filter.addAction(BitmapRenderingIntent.RENDERACTION);
         LocalBroadcastManager.getInstance(this).registerReceiver(receiver, filter);
         lastKnownLocation = getCachedLocation();
         if (lastKnownLocation == null) {

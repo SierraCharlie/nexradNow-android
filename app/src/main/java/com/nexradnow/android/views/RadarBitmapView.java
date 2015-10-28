@@ -20,6 +20,7 @@ import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
 import com.google.inject.Inject;
+import com.nexradnow.android.app.NexradView;
 import com.nexradnow.android.app.R;
 import com.nexradnow.android.exception.NexradNowException;
 import com.nexradnow.android.model.AppMessage;
@@ -340,6 +341,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
                 color = Color.RED;
             }
             productDescription = null;
+            // TODO - determine product description and timestamp from product
             if (lastRenderer != null) {
                 productDescription = lastRenderer.getProductDescription();
             }
@@ -469,7 +471,15 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
             return;
         }
 
-        createBackingBitmap(bitmapRegion);
+        // Request creation via activity
+        if (getContext() instanceof NexradView) {
+            Log.d(TAG,"successfully got parent activity");
+        }
+        if (createBackingBitmap(bitmapRegion) == null) {
+            // No bitmap created!
+            Log.e(TAG,"no backing bitmap created - out of memory?");
+            return;
+        }
 
         Canvas bitmapCanvas = new Canvas(backingBitmap);
         Calendar oldestTimestamp = null;
@@ -585,7 +595,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     /**
      * Generate the backing bitmap for the display.
      */
-    private void createBackingBitmap(LatLongRect span) {
+    private Bitmap createBackingBitmap(LatLongRect span) {
         if (span==null) {
             // Determine what actual lat/long region is covered by our data
             bitmapLatLongRect = new LatLongRect(selectedLocation);
@@ -676,6 +686,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         }
         // Compute the center point
         viewCenter = new Point(bitmapPixelSize.centerX(), bitmapPixelSize.centerY());
+        return backingBitmap;
     }
 
     /**

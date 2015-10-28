@@ -23,7 +23,7 @@
     <string name="pref_nexrad_ftpdir_summ">Directory for Nexrad Radar Operations Center data</string>
     <string name="pref_nexrad_ftpdir_default">/SL.us008001/DF.of/DC.radar</string>
 
-    <string name="pref_nexrad_emailaddress_title">User\'s Email Address</string>
+    <string name="pref_nexrad_emailaddress_title">Email Address for FTP Login Only</string>
     <string name="pref_nexrad_emailaddress_summ">Provide email address for use during FTP server login</string>
     <string name="pref_nexrad_emailaddress_default"></string>
 
