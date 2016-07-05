@@ -10,10 +10,13 @@ import com.nexradnow.android.model.LatLongCoordinates;
 import com.nexradnow.android.model.LatLongRect;
 import com.nexradnow.android.model.LatLongScaler;
 import com.nexradnow.android.model.NexradProduct;
+import com.nexradnow.android.model.NexradStation;
 import ucar.ma2.Array;
 import ucar.ma2.ArrayFloat;
 import ucar.nc2.NetcdfFile;
 import ucar.nc2.Variable;
+
+import java.util.Collection;
 
 /**
  * Created by hobsonm on 10/16/15.
@@ -67,9 +70,11 @@ lon2 = lon1 + atan2(sin(θ)*sin(d/R)*cos(lat1), cos(d/R)−sin(lat1)*sin(lat2))
         double newLong = origin.getLongitude()+meterLonOffset/(111132*cosLat);
         return new LatLongCoordinates(newLat,newLong);
     }
-    @Override
-    public void renderToCanvas(Canvas canvas, NexradProduct product, Paint paint, LatLongScaler scaler,
-                               int minFeatureSize) throws NexradNowException {
+
+
+    public void renderToCanvas(Canvas canvas, NexradProduct product, Paint paint, LatLongScaler scaler, int minFeatureSize,
+                               double safeDistance, NexradStation dataOwner, Collection<NexradStation> otherStations)
+            throws NexradNowException {
         // General flow:
         // Analyze data to find radial array
         // Determine angle values and range values
@@ -187,6 +192,29 @@ lon2 = lon1 + atan2(sin(θ)*sin(d/R)*cos(lat1), cos(d/R)−sin(lat1)*sin(lat2))
                     prevPt2 = pt2;
                     prevPt3 = pt3;
                     stashedPts[gateIndex] = pt2;
+                    // Validate that we are plotting closest points
+                    if (dataOwner != null) {
+                        if (p2.distanceTo(dataOwner.getCoords()) > safeDistance) {
+                            // Need to check against all other stations
+                            NexradStation closestStation = null;
+                            double closestDistance = 0.0;
+                            for (NexradStation station:otherStations) {
+                                double stationDistance = station.getCoords().distanceTo(p2);
+                                if (station.getIdentifier().equals(dataOwner.getIdentifier())) {
+                                    // Be generous and give the "owning" station a little "discount"
+                                    stationDistance *= 0.9;
+                                }
+                                if ((closestStation == null)||(stationDistance < closestDistance)) {
+                                    closestStation = station;
+                                    closestDistance = station.getCoords().distanceTo(p2);
+                                }
+                            }
+                            if (!closestStation.getIdentifier().equals(dataOwner.getIdentifier())) {
+                                continue;
+                            }
+                        }
+                    }
+
                     // Do the drawing deed.
                     float plotValue = ((float)cellValue-5)/70.0f;
                     if (plotValue > 1) {

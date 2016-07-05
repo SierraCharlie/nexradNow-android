@@ -1,12 +1,13 @@
 package com.nexradnow.android.model;
 
+import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Created by hobsonm on 9/16/15.
  */
-public class NexradUpdate {
+public class NexradUpdate implements Serializable {
     protected Map<NexradStation,List<NexradProduct>> updateProduct;
     protected LatLongCoordinates centerPoint;
 

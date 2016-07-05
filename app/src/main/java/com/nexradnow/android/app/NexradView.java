@@ -25,6 +25,7 @@ import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
 import com.google.inject.Inject;
 import com.nexradnow.android.model.AppMessage;
+import com.nexradnow.android.model.BitmapEvent;
 import com.nexradnow.android.model.LatLongCoordinates;
 import com.nexradnow.android.model.LocationChangeEvent;
 import com.nexradnow.android.model.NexradProduct;
@@ -198,6 +199,11 @@ public class NexradView extends RoboActionBarActivity implements
             LocationChangeEvent event = new LocationChangeEvent(locationLatLong);
             eventBusProvider.getEventBus().post(event);
         }
+    }
+
+    public void onEvent(BitmapEvent bitmapEvent) {
+        RadarBitmapView radarView = (RadarBitmapView)findViewById(R.id.radarView);
+        radarView.onEvent(bitmapEvent);
     }
 
     public void onEvent(LocationChangeEvent location) {

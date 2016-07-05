@@ -7,6 +7,7 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
+import android.graphics.Rect;
 import android.preference.PreferenceManager;
 import android.support.multidex.MultiDexApplication;
 import android.support.v4.content.LocalBroadcastManager;
@@ -25,11 +26,15 @@ import com.nexradnow.android.services.BitmapRenderingIntent;
 import com.nexradnow.android.services.DataRefreshIntent;
 import com.nexradnow.android.services.EventBusProvider;
 import com.nexradnow.android.services.LocationInfoIntent;
+import com.nexradnow.android.util.NexradNowFileUtils;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import roboguice.RoboGuice;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -57,6 +62,7 @@ public class NexradApp  extends MultiDexApplication {
      */
     protected LatLongCoordinates lastKnownLocation;
     protected LatLongCoordinates lastGpsLocation;
+
     // TODO: save/restore this last known location via long-term app storage
 
     public enum LocationMode {GPS, NEXRAD, GEOCODE};
@@ -101,10 +107,19 @@ public class NexradApp  extends MultiDexApplication {
                     }
                 } else if (intent.getAction().equals(BitmapRenderingIntent.RENDERACTION)) {
                     if (status == BitmapRenderingIntent.STATUS_FINISHED) {
-                        Bitmap result = (Bitmap)intent.getParcelableExtra("com.nexradnow.android.bitmap");
-                        LatLongRect resultRect = (LatLongRect)intent.getSerializableExtra("com.nexradnow.android.latLongRect");
-                        BitmapEvent event = new BitmapEvent(result, resultRect);
-                        eventBusProvider.getEventBus().post(event);
+                        File bitmapFile = (File)intent.getSerializableExtra("com.nexradnow.android.bitmap");
+                        Bitmap result = null;
+                        try {
+                            result = NexradNowFileUtils.readBitmapFromFile(bitmapFile);
+                        } catch (IOException ioex) {
+                            postMessage("Error receiving bitmap: "+ioex.toString(), AppMessage.Type.ERROR);
+                        }
+                        bitmapFile.delete();
+                        if (result != null) {
+                            LatLongRect resultRect = (LatLongRect) intent.getSerializableExtra("com.nexradnow.android.latLongRect");
+                            BitmapEvent event = new BitmapEvent(result, resultRect);
+                            eventBusProvider.getEventBus().post(event);
+                        }
                     } else if (status == BitmapRenderingIntent.STATUS_ERROR) {
                         postMessage(intent.getStringExtra("com.nexradnow.android.errmsg"), AppMessage.Type.ERROR);
                     } else if (status == BitmapRenderingIntent.STATUS_RUNNING) {
@@ -228,6 +243,7 @@ public class NexradApp  extends MultiDexApplication {
         requestWxForLocation(locationChangeEvent.getCoordinates());
     }
 
+
     public void onEvent(LocationSelectionEvent locationSelection) {
         switch (locationSelection.getType()) {
             case GPS:
@@ -244,6 +260,32 @@ public class NexradApp  extends MultiDexApplication {
                 requestCityStateLocation(locationSelection.getCityState());
                 break;
         }
+    }
+
+    /**
+     * Request generation of a product bitmap via an async activity.
+     *
+     * @param latLongRect lat/long of the bitmap borders
+     * @param bitmapSize physical size of the bitmap
+     * @param update product(s) to be drawn on the bitmap.
+     * @param displayDensity display density value
+     */
+    public void startRendering(LatLongRect latLongRect, Rect bitmapSize, NexradUpdate update, float displayDensity) {
+        Intent intent = new Intent(BitmapRenderingIntent.RENDERACTION, null, this, BitmapRenderingIntent.class);
+        intent.putExtra("com.nexradnow.android.latLongRect",latLongRect);
+        intent.putExtra("com.nexradnow.android.bitmapRect", bitmapSize);
+        intent.putExtra("com.nexradnow.android.displayDensity", displayDensity);
+        // pass the "update" via a cache file and delete when received
+        // ref: http://stackoverflow.com/questions/3425906/creating-temporary-files-in-android
+        // ref: http://stackoverflow.com/questions/36909374/crash-on-passing-large-sets-of-data-through-intents-is-there-a-size-limit-on-t
+        File updateFile = null;
+        try {
+            updateFile = NexradNowFileUtils.writeObjectToCacheFile(this, "wxdat", "tmp", update);
+        } catch (IOException ioex) {
+            postMessage(ioex.toString(), AppMessage.Type.ERROR);
+        }
+        intent.putExtra("com.nexradnow.android.nexradUpdate", updateFile);
+        startService(intent);
     }
 
     public LocationMode getLocationMode() {

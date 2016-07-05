@@ -10,11 +10,13 @@ import com.nexradnow.android.model.LatLongCoordinates;
 import com.nexradnow.android.model.LatLongRect;
 import com.nexradnow.android.model.LatLongScaler;
 import com.nexradnow.android.model.NexradProduct;
+import com.nexradnow.android.model.NexradStation;
 import ucar.ma2.ArrayFloat;
 import ucar.nc2.Dimension;
 import ucar.nc2.NetcdfFile;
 import ucar.nc2.Variable;
 
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -57,6 +59,13 @@ public abstract class NexradGridRenderer implements NexradRenderer {
 
     @Override
     public void renderToCanvas(Canvas canvas, NexradProduct product, Paint paint, LatLongScaler scaler, int minFeatureSize)
+            throws NexradNowException {
+        renderToCanvas(canvas, product, paint, scaler, minFeatureSize, 0.0, null, null);
+    }
+
+    @Override
+    public void renderToCanvas(Canvas canvas, NexradProduct product, Paint paint, LatLongScaler scaler, int minFeatureSize,
+                               double safeDistance, NexradStation dataOwner, Collection<NexradStation> otherStations)
             throws NexradNowException {
         Paint productPaint = paint;
         byte[] rawData = product.getBinaryData();
@@ -110,6 +119,23 @@ public abstract class NexradGridRenderer implements NexradRenderer {
                     float ptLatStart = (float)((float)numCells-y)/(float)numCells*latSpan + latOrigin;
                     float ptLonStart = (float)x/(float)numCells*lonSpan + lonOrigin;
                     LatLongCoordinates origin = new LatLongCoordinates(ptLatStart, ptLonStart);
+                    // check distance against min distance
+                    if (dataOwner != null) {
+                        if (origin.distanceTo(dataOwner.getCoords()) > safeDistance) {
+                            // Need to check against all other stations
+                            NexradStation closestStation = null;
+                            double closestDistance = 0.0;
+                            for (NexradStation station:otherStations) {
+                                if ((closestStation == null)||(station.getCoords().distanceTo(origin) < closestDistance)) {
+                                    closestStation = station;
+                                    closestDistance = station.getCoords().distanceTo(origin);
+                                }
+                            }
+                            if (!closestStation.getIdentifier().equals(dataOwner.getIdentifier())) {
+                                continue;
+                            }
+                        }
+                    }
                     LatLongCoordinates extent = new LatLongCoordinates(ptLatStart+latSpan/(float)numCells,ptLonStart+lonSpan/(float)numCells);
                     if (productPaint == null) {
                         productPaint = new Paint();

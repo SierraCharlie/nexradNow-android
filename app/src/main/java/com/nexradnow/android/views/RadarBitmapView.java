@@ -20,10 +20,12 @@ import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
 import com.google.inject.Inject;
+import com.nexradnow.android.app.NexradApp;
 import com.nexradnow.android.app.NexradView;
 import com.nexradnow.android.app.R;
 import com.nexradnow.android.exception.NexradNowException;
 import com.nexradnow.android.model.AppMessage;
+import com.nexradnow.android.model.BitmapEvent;
 import com.nexradnow.android.model.LatLongCoordinates;
 import com.nexradnow.android.model.LatLongRect;
 import com.nexradnow.android.model.LatLongScaler;
@@ -45,9 +47,12 @@ import java.io.InputStream;
 import java.io.Serializable;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -143,6 +148,8 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
 
     protected String productDescription;
 
+    protected boolean inhibitRegenerate = false;
+
     public RadarBitmapView(Context context) {
         super(context);
         init();
@@ -192,8 +199,10 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     @Override
     public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
         // Shift the center point as needed
-        viewCenter.x += distanceX;
-        viewCenter.y += distanceY;
+        if ( viewCenter != null) {
+            viewCenter.x += distanceX;
+            viewCenter.y += distanceY;
+        }
         this.invalidate();
         return true;
     }
@@ -261,17 +270,20 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     public void onScaleEnd(ScaleGestureDetector detector) {
         // re-render bitmap at new scale factor
         scaling = false;
-        LatLongCoordinates centerLatLong = scalePoint(viewCenter,bitmapLatLongRect,bitmapPixelSize);
-        float latSpan = (float)bitmapLatLongRect.height() * 1.0f/cumulativeScale;
-        float longSpan = (float)bitmapLatLongRect.width() * 1.0f/cumulativeScale;
-        LatLongRect scaledLatLongRect = new LatLongRect(0,0,0,0);
-        scaledLatLongRect.left = centerLatLong.getLongitude()-longSpan/2.0;
-        scaledLatLongRect.right = scaledLatLongRect.left + longSpan;
-        scaledLatLongRect.bottom = centerLatLong.getLatitude() - latSpan/2.0;
-        scaledLatLongRect.top = scaledLatLongRect.bottom + latSpan;
-        regenerateBitmap(scaledLatLongRect);
-        viewCenter = scaleCoordinate(centerLatLong,bitmapLatLongRect,bitmapPixelSize);
-        this.invalidate();
+        if ((viewCenter != null)&&(bitmapLatLongRect!=null)&&(bitmapPixelSize!=null)) {
+            LatLongCoordinates centerLatLong = scalePoint(viewCenter, bitmapLatLongRect, bitmapPixelSize);
+            float latSpan = (float) bitmapLatLongRect.height() * 1.0f / cumulativeScale;
+            float longSpan = (float) bitmapLatLongRect.width() * 1.0f / cumulativeScale;
+            LatLongRect scaledLatLongRect = new LatLongRect(0, 0, 0, 0);
+            scaledLatLongRect.left = centerLatLong.getLongitude() - longSpan / 2.0;
+            scaledLatLongRect.right = scaledLatLongRect.left + longSpan;
+            scaledLatLongRect.bottom = centerLatLong.getLatitude() - latSpan / 2.0;
+            scaledLatLongRect.top = scaledLatLongRect.bottom + latSpan;
+            viewCenter = scaleCoordinate(centerLatLong, bitmapLatLongRect, bitmapPixelSize);
+            regenerateBitmap(scaledLatLongRect);
+        } else {
+            regenerateBitmap(null);
+        }
     }
 
     @Override
@@ -287,6 +299,9 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         }
         Paint brush = drawPaint;
 
+        if (viewCenter == null) {
+            viewCenter = new Point(bitmapPixelSize.centerX(), bitmapPixelSize.centerY());
+        }
         Rect bitmapClipRect = new Rect();
         bitmapClipRect.left = viewCenter.x - viewWidth/2;
         bitmapClipRect.right = bitmapClipRect.left+viewWidth;
@@ -340,11 +355,14 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
                     TimeUnit.MILLISECONDS.convert(15,TimeUnit.MINUTES)) {
                 color = Color.RED;
             }
-            productDescription = null;
+            productDescription = "Unknown";
             // TODO - determine product description and timestamp from product
             if (lastRenderer != null) {
                 productDescription = lastRenderer.getProductDescription();
             }
+            productDescription = rendererInventory.getRenderer(
+                    productDisplay.get(productDisplay.keySet().iterator().next()).get(0).getProductCode()
+            ).getProductDescription();
             drawTimestamp(canvas, timestamp, productDescription, color);
         } else {
             drawTimestamp(canvas, "No Data", null, Color.RED);
@@ -466,25 +484,43 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     }
 
 
+    public void onEvent(BitmapEvent bitmapEvent) {
+        Log.d(TAG,"received bitmap from renderer!");
+        backingBitmap = bitmapEvent.getBitmap();
+        inhibitRegenerate = false;
+        appMessage = null;
+        this.invalidate();
+    }
+
     protected void regenerateBitmap(LatLongRect bitmapRegion) {
+        if (inhibitRegenerate) {
+            return;
+        }
+
         if ((viewWidth <= 0)||(viewHeight <= 0)) {
             return;
         }
-
+        inhibitRegenerate = true;
+        bitmapLatLongRect = computeBitmapLatLongRect(bitmapRegion);
         // Request creation via activity
         if (getContext() instanceof NexradView) {
             Log.d(TAG,"successfully got parent activity");
-        }
-        if (createBackingBitmap(bitmapRegion) == null) {
-            // No bitmap created!
-            Log.e(TAG,"no backing bitmap created - out of memory?");
-            return;
+            NexradView nexradView = (NexradView)getContext();
+            if (nexradView.getApplication() instanceof NexradApp) {
+                NexradApp nexradApp = (NexradApp)nexradView.getApplication();
+                bitmapPixelSize = new Rect(0,0,viewWidth*2,viewHeight*2);
+                nexradApp.startRendering(bitmapLatLongRect,
+                        bitmapPixelSize, new NexradUpdate(productDisplay,selectedLocation),
+                        displayDensity
+                        );
+            }
         }
 
-        Canvas bitmapCanvas = new Canvas(backingBitmap);
         Calendar oldestTimestamp = null;
         if ((productDisplay!=null)&&(!productDisplay.isEmpty())) {
-            for (NexradStation station : productDisplay.keySet()) {
+            // Compute smallest inter-station distance
+            Collection<NexradStation> validStations = findStationsWithData(productDisplay);
+            for (NexradStation station : validStations) {
                 if (!bitmapLatLongRect.contains(station.getCoords())) {
                     continue;
                 }
@@ -493,32 +529,22 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
                     if ((oldestTimestamp == null) || (thisTimestamp.before(oldestTimestamp))) {
                         oldestTimestamp = thisTimestamp;
                     }
-                    plotProduct(bitmapCanvas, bitmapLatLongRect, bitmapPixelSize, productDisplay.get(station).get(0));
                 }
             }
-            for (NexradStation station : productDisplay.keySet()) {
-                if (!bitmapLatLongRect.contains(station.getCoords())) {
-                    continue;
-                }
-                boolean stationHasData = (productDisplay.get(station) != null) && (!productDisplay.get(station).isEmpty());
-                plotStation(bitmapCanvas, bitmapLatLongRect, bitmapPixelSize, station, stationHasData);
-            }
-        } else {
-            // No products or empty product set
         }
-        drawMap(bitmapCanvas, bitmapLatLongRect, bitmapPixelSize);
-
-        drawHomePoint(bitmapCanvas, bitmapLatLongRect, bitmapPixelSize, selectedLocation);
         dataTimestamp = oldestTimestamp;
+
     }
 
-    private void drawHomePoint(Canvas canvas, LatLongRect latLongRect, Rect pixelSize, LatLongCoordinates location) {
-        if (homePointPaint == null) {
-            homePointPaint = new Paint();
+     private Collection<NexradStation> findStationsWithData(Map<NexradStation, List<NexradProduct>> productDisplay) {
+        Collection<NexradStation> stationsWithData = new ArrayList<NexradStation>();
+        for (NexradStation station : productDisplay.keySet()) {
+            boolean stationHasData = (productDisplay.get(station) != null) && (!productDisplay.get(station).isEmpty());
+            if (stationHasData) {
+                stationsWithData.add(station);
+            }
         }
-        Paint brush = homePointPaint;
-        Point locationPoint = scaleCoordinate(location, latLongRect, pixelSize);
-        canvas.drawCircle(locationPoint.x,locationPoint.y,scalePixels(3),brush);
+        return stationsWithData;
     }
 
     /**
@@ -548,40 +574,6 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         return new LatLongCoordinates(latValue, longValue);
     }
 
-    private void plotStation(Canvas canvas, LatLongRect latLongRect, Rect pixelSize,
-                             NexradStation station, boolean hasData) {
-        if (stationPaint == null) {
-            stationPaint = new Paint();
-            stationPaint.setTextSize(scalePixels(10));
-            stationPaint.setStyle(Paint.Style.FILL);
-        }
-        Paint brush = stationPaint;
-        Point stationPoint = scaleCoordinate(station.getCoords(), latLongRect, pixelSize);
-
-        stationPaint.setColor(Color.DKGRAY);
-        stationPaint.setAlpha(128);
-        if (hasData) {
-            canvas.drawCircle(stationPoint.x, stationPoint.y, scalePixels(7), brush);
-        } else {
-            // Draw special symbol for station that has no data associated with it.
-            canvas.drawCircle(stationPoint.x, stationPoint.y, scalePixels(7), brush);
-            stationPaint.setColor(Color.WHITE);
-            canvas.drawCircle(stationPoint.x, stationPoint.y, scalePixels(5), brush);
-            stationPaint.setStyle(Paint.Style.STROKE);
-            stationPaint.setColor(Color.RED);
-            float defaultStrokeWidth = stationPaint.getStrokeWidth();
-            stationPaint.setStrokeWidth(scalePixels(2));
-            canvas.drawCircle(stationPoint.x, stationPoint.y, scalePixels(5), brush);
-            canvas.drawLine(stationPoint.x-scalePixels(3),stationPoint.y-scalePixels(3),
-                    stationPoint.x+scalePixels(3),stationPoint.y+scalePixels(3),stationPaint);
-            stationPaint.setStyle(Paint.Style.FILL);
-            stationPaint.setStrokeWidth(defaultStrokeWidth);
-        }
-        stationPaint.setColor(Color.BLACK);
-        stationPaint.setAlpha(180);
-        canvas.drawText(station.getIdentifier(),
-                stationPoint.x + scalePixels(12), stationPoint.y + scalePixels(4), brush);
-    }
 
     public void releaseBitmap() {
         if (backingBitmap != null) {
@@ -593,21 +585,26 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     }
 
     /**
-     * Generate the backing bitmap for the display.
+     * Determine the adjusted LatLong coverage of the bitmap that will back the view. The actual span
+     * will almost certainly be different from the desired span due to display geometries and data coverage.
+     *
+     * @param span
+     * @return the best fit lat long dimensions that the bitmap should cover
      */
-    private Bitmap createBackingBitmap(LatLongRect span) {
+    protected LatLongRect computeBitmapLatLongRect (LatLongRect span) {
+        LatLongRect computedLatLongRect;
         if (span==null) {
             // Determine what actual lat/long region is covered by our data
-            bitmapLatLongRect = new LatLongRect(selectedLocation);
+            computedLatLongRect = new LatLongRect(selectedLocation);
             if ((productDisplay != null) && (!productDisplay.isEmpty())) {
                 for (NexradStation station : productDisplay.keySet()) {
-                    bitmapLatLongRect.union(station.getCoords());
+                    computedLatLongRect.union(station.getCoords());
                     List<NexradProduct> radarData = productDisplay.get(station);
                     if (!radarData.isEmpty()) {
                         for (NexradProduct radarProduct : radarData) {
                             LatLongRect radarDataRect = computeEnclosingRect(radarProduct);
                             if (radarDataRect != null) {
-                                bitmapLatLongRect.union(radarDataRect);
+                                computedLatLongRect.union(radarDataRect);
                             }
                         }
                     }
@@ -616,78 +613,53 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
                 // Estimate something reasonable so that when the map is drawn, you can see some
                 // surrounding info (such as some state lines). I'm guessing that offsetting 10 degrees lat/long
                 // in all directions should do it.
-                bitmapLatLongRect.union(selectedLocation.getLongitude() - 10.0f, selectedLocation.getLatitude() - 10.0f);
-                bitmapLatLongRect.union(selectedLocation.getLongitude() + 10.0f, selectedLocation.getLatitude() + 10.0f);
+                computedLatLongRect.union(selectedLocation.getLongitude() - 10.0f, selectedLocation.getLatitude() - 10.0f);
+                computedLatLongRect.union(selectedLocation.getLongitude() + 10.0f, selectedLocation.getLatitude() + 10.0f);
             }
             // Now we should know the max that we can display.
             // We want this to respect the aspect ratio of the view. It should be a bit larger than the view,
             // with the same aspect ratio. It should also be centered on the "selected location".
             // First make sure that we include the selected location itself...
-            bitmapLatLongRect.union((float) selectedLocation.getLongitude(), (float) selectedLocation.getLatitude());
+            computedLatLongRect.union((float) selectedLocation.getLongitude(), (float) selectedLocation.getLatitude());
             // Now re-center
-            double centerX = bitmapLatLongRect.centerX();
+            double centerX = computedLatLongRect.centerX();
             double xDiff = centerX - selectedLocation.getLongitude();
             if (xDiff < 0) {
-                bitmapLatLongRect.right += 2*xDiff;
+                computedLatLongRect.right += 2*xDiff;
             } else {
-                bitmapLatLongRect.left -= 2*xDiff;
+                computedLatLongRect.left -= 2*xDiff;
             }
-            double centerY = bitmapLatLongRect.centerY();
+            double centerY = computedLatLongRect.centerY();
             double yDiff = centerY - selectedLocation.getLatitude();
             if (yDiff < 0) {
-                bitmapLatLongRect.top += 2*yDiff;
+                computedLatLongRect.top += 2*yDiff;
             } else {
-                bitmapLatLongRect.bottom -= 2*yDiff;
+                computedLatLongRect.bottom -= 2*yDiff;
             }
         } else {
             // If we've been explicitly told which area to map, then...
-            bitmapLatLongRect = span;
+            computedLatLongRect = span;
         }
         // Compute the aspect ratio of the display
-         // Respect the aspect ratio of the display
+        // Respect the aspect ratio of the display
         float targetAspectRatio = (float)viewHeight/(float)viewWidth;
-        double bitmapAspectRatio = (bitmapLatLongRect.height()/bitmapLatLongRect.width());
+        double bitmapAspectRatio = (computedLatLongRect.height()/computedLatLongRect.width());
         if (bitmapAspectRatio < targetAspectRatio) {
             // We need to grow the height of the bitmap
-            double newExtentHeight = bitmapLatLongRect.width()*targetAspectRatio;
-            double heightAdjustment = (newExtentHeight-bitmapLatLongRect.height())/2.0;
-            bitmapLatLongRect.top += heightAdjustment;
-            bitmapLatLongRect.bottom -= heightAdjustment;
+            double newExtentHeight = computedLatLongRect.width()*targetAspectRatio;
+            double heightAdjustment = (newExtentHeight-computedLatLongRect.height())/2.0;
+            computedLatLongRect.top += heightAdjustment;
+            computedLatLongRect.bottom -= heightAdjustment;
         } else {
             // We need to grow the width of the bitmap
-            double newExtentWidth = bitmapLatLongRect.height()/targetAspectRatio;
-            double widthAdjustment = (newExtentWidth-bitmapLatLongRect.width())/2.0;
-            bitmapLatLongRect.left -= widthAdjustment;
-            bitmapLatLongRect.right += widthAdjustment;
+            double newExtentWidth = computedLatLongRect.height()/targetAspectRatio;
+            double widthAdjustment = (newExtentWidth-computedLatLongRect.width())/2.0;
+            computedLatLongRect.left -= widthAdjustment;
+            computedLatLongRect.right += widthAdjustment;
         }
-        // Compute the bitmap size in pixels
-        bitmapPixelSize = new Rect(0,0,viewWidth*2, viewHeight*2);
-        // Re-use if size hasn't changed
-        if (backingBitmap != null) {
-            if ((backingBitmap.getHeight()!=bitmapPixelSize.height())||
-                    (backingBitmap.getWidth()!=bitmapPixelSize.width())) {
-                // Size difference
-                Log.d(TAG,"recycling backing bitmap");
-                backingBitmap.recycle();
-                backingBitmap = null;
-                System.gc();
-            } else {
-                // clear contents
-                backingBitmap.eraseColor(Color.WHITE);
-            }
-        }
-        if (backingBitmap == null) {
-            Log.d(TAG, "allocating backing bitmap");
-            try {
-                backingBitmap = Bitmap.createBitmap(bitmapPixelSize.width(), bitmapPixelSize.height(), Bitmap.Config.ARGB_4444);
-            } catch (OutOfMemoryError oom) {
-                Log.e(TAG,"out of memory when creating bitmap");
-            }
-        }
-        // Compute the center point
-        viewCenter = new Point(bitmapPixelSize.centerX(), bitmapPixelSize.centerY());
-        return backingBitmap;
+        return computedLatLongRect;
     }
+
 
     /**
      * Compute the enclosing bounds (lat/long) for the radar data item.
@@ -709,127 +681,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         return result;
     }
 
-    private void plotProduct(Canvas canvas, final LatLongRect latLongRect, final Rect pixelSize, NexradProduct product) {
-        LatLongScaler scaler = new LatLongScaler() {
-            @Override
-            public PointF scaleLatLong(LatLongCoordinates coordinates) {
-                return new PointF(scaleCoordinate(coordinates, latLongRect, pixelSize));
-            }
-            @Override
-            public float distanceForPixels(int pixelCount) {
-                double lonSpan = latLongRect.width();
-                double lonPerPixel = lonSpan/pixelSize.width();
-                double distancePerLon = 111132;
-                double distance = lonPerPixel * (double)pixelCount * distancePerLon;
-                return (float)distance;
-            }
-            @Override
-            public LatLongCoordinates scalePoint(PointF point) {
-                return RadarBitmapView.this.scalePoint(new Point((int) point.x, (int) point.y), latLongRect, pixelSize);
-            }
-            @Override
-            public int pixelsForDistance(float distanceMeters) {
-                double lonSpan = latLongRect.width();
-                double lonPerPixel = lonSpan/pixelSize.width();
-                double distancePerLon = 111132;
-                double pixels = (double)distanceMeters/distancePerLon/lonPerPixel;
-                return (int)pixels;
-            }
-        };
-        if (productPaint == null) {
-            productPaint = new Paint();
-        }
-        NexradRenderer renderer = rendererInventory.getRenderer(product.getProductCode());
-        if (renderer != null) {
-            try {
-                renderer.renderToCanvas(canvas, product, productPaint, scaler, 4);
-                lastRenderer = renderer;
-            } catch (Exception ex) {
-                Log.e(TAG,"error rendering product for station "+product.getStation().getIdentifier(),ex);
-            }
-        }
-    }
 
-    private void drawMap(Canvas canvas, LatLongRect latLongRect, Rect pixelSize) {
-        try {
-            InputStream is = getContext().getResources().openRawResource(R.raw.cb_2014_us_state_20m);
-            ShapeFileReader sr = new ShapeFileReader(is);
-            ShapeFileHeader hdr = sr.getHeader();
-            switch (hdr.getShapeType()) {
-                case POLYGON:
-                case POLYGON_Z:
-                    break;
-                default:
-                    throw new IllegalStateException("shape file of unsupported type encountered: "
-                            + hdr.getShapeType().toString());
-            }
-            AbstractShape s;
-            int shapeCount = 0;
-            int includedShapes = 0;
-            while ((s = sr.next()) != null) {
-                AbstractPolyShape polygon = (AbstractPolyShape)s;
-                shapeCount++;
-                if (!shapeExcluded(polygon, latLongRect)) {
-                    includedShapes++;
-                    for (int part = 0; part < polygon.getNumberOfParts(); part++) {
-                        PointData[] points = polygon.getPointsOfPart(part);
-                        plotPolygonPoints(canvas, latLongRect, pixelSize, points);
-                    }
-                }
-            }
-            Log.d(TAG,"total shapes: "+shapeCount+" included: "+includedShapes);
-            is.close();
-        } catch (Exception ex) {
-            Log.e(TAG,"error while reading outline shape file", ex);
-        }
-    }
-
-    /**
-     * Do some simple bounds checking to see if the polygon might possibly lie within our view window
-     * @param polygon
-     * @return
-     */
-    private boolean shapeExcluded(AbstractPolyShape polygon, LatLongRect latLongRect) {
-        double maxViewLongitude = latLongRect.right;
-        double minViewLongitude = latLongRect.left;
-        double maxViewLatitude = latLongRect.top;
-        double minViewLatitude = latLongRect.bottom;
-        boolean exclude = false;
-        if (polygon.getBoxMinX() > maxViewLongitude) {
-            // excluded
-            exclude =  true;
-        } else if (polygon.getBoxMaxX() < minViewLongitude) {
-            // excluded
-            exclude = true;
-        } else  if (polygon.getBoxMaxY() < minViewLatitude) {
-            // excluded
-            exclude = true;
-        } else if (polygon.getBoxMinY() > maxViewLatitude) {
-            exclude = true;
-        }
-        // This isn't completely true, but hopefully we will exclude the majority of shapes
-        return exclude;
-
-    }
-
-    private void plotPolygonPoints(Canvas canvas, LatLongRect latLongRect, Rect pixelSize, PointData[] points) {
-        if (mapPaint == null) {
-            mapPaint = new Paint();
-            mapPaint.setStrokeWidth(scalePixels(2));
-            mapPaint.setColor(Color.GRAY);
-            mapPaint.setAlpha(50);
-        }
-        Paint brush = mapPaint;
-        Point from = null;
-        Point to = null;
-        for (PointData eachSrcPoint : points) {
-            to = scaleCoordinate(new LatLongCoordinates(eachSrcPoint.getY(), eachSrcPoint.getX()), latLongRect, pixelSize);
-            if (from != null) {
-                canvas.drawLine(from.x,from.y,to.x,to.y,brush);
-            }
-            from = to;
-        }
-    }
 
     private Bundle writeBundle() {
         Bundle savedState = new Bundle();
