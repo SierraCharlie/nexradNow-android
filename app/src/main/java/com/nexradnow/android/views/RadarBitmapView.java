@@ -136,15 +136,6 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     // Paint objects for various operations
     protected Paint drawPaint; // onDraw
 
-    protected Paint homePointPaint; // used to draw home point
-
-    protected Paint productPaint; // used to draw product
-
-    protected Paint stationPaint; // used to draw station locations
-
-    protected Paint mapPaint; // used to draw map
-
-    protected NexradRenderer lastRenderer;
 
     protected String productDescription;
 
@@ -269,7 +260,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     @Override
     public void onScaleEnd(ScaleGestureDetector detector) {
         // re-render bitmap at new scale factor
-        scaling = false;
+        scaling = true;
         if ((viewCenter != null)&&(bitmapLatLongRect!=null)&&(bitmapPixelSize!=null)) {
             LatLongCoordinates centerLatLong = scalePoint(viewCenter, bitmapLatLongRect, bitmapPixelSize);
             float latSpan = (float) bitmapLatLongRect.height() * 1.0f / cumulativeScale;
@@ -290,14 +281,55 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
-        if (backingBitmap == null) {
-            return;
+        if (backingBitmap != null) {
+            renderBitmap(canvas);
         }
+
+        if (appMessage != null) {
+            if (System.currentTimeMillis()-appMessageTimestamp > TimeUnit.MILLISECONDS.convert(10,TimeUnit.SECONDS)) {
+                appMessage = null;
+            } else {
+                drawMessage(canvas, appMessage);
+            }
+        }
+
+
+        // Layer timestamp on graphic
+        DateFormat fmt = new SimpleDateFormat("yyyy-MM-dd HH:mm");
+        if (dataTimestamp != null) {
+            String timestamp = fmt.format(dataTimestamp.getTime());
+            int color = Color.GREEN;
+            if (System.currentTimeMillis()-dataTimestamp.getTime().getTime() >
+                    TimeUnit.MILLISECONDS.convert(5,TimeUnit.MINUTES)) {
+                color = Color.YELLOW;
+            }
+            if (System.currentTimeMillis()-dataTimestamp.getTime().getTime() >
+                    TimeUnit.MILLISECONDS.convert(15,TimeUnit.MINUTES)) {
+                color = Color.RED;
+            }
+            String productCode = null;
+            try {
+                productCode = productDisplay.entrySet().iterator().next().getValue().get(0).getProductCode();
+            } catch (Exception ex) {
+                // NPE etc.
+            }
+            if (productCode != null) {
+                productDescription = rendererInventory.getRenderer(productCode).getProductDescription();
+                drawTimestamp(canvas, timestamp, productDescription, color);
+            }
+        } else {
+            drawTimestamp(canvas, "No Data", null, Color.RED);
+        }
+
+    }
+
+    private void renderBitmap(Canvas canvas) {
         Rect destRect = new Rect(0,0,viewWidth,viewHeight);
         if (drawPaint == null) {
             drawPaint = new Paint();
         }
         Paint brush = drawPaint;
+
 
         if (viewCenter == null) {
             viewCenter = new Point(bitmapPixelSize.centerX(), bitmapPixelSize.centerY());
@@ -341,40 +373,6 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
         viewCenter.y = bitmapClipRect.centerY();
 
         canvas.drawBitmap(backingBitmap, bitmapClipRect, destRect, brush);
-
-        // Layer timestamp on graphic
-        DateFormat fmt = new SimpleDateFormat("yyyy-MM-dd HH:mm");
-        if (dataTimestamp != null) {
-            String timestamp = fmt.format(dataTimestamp.getTime());
-            int color = Color.GREEN;
-            if (System.currentTimeMillis()-dataTimestamp.getTime().getTime() >
-                    TimeUnit.MILLISECONDS.convert(5,TimeUnit.MINUTES)) {
-                color = Color.YELLOW;
-            }
-            if (System.currentTimeMillis()-dataTimestamp.getTime().getTime() >
-                    TimeUnit.MILLISECONDS.convert(15,TimeUnit.MINUTES)) {
-                color = Color.RED;
-            }
-            productDescription = "Unknown";
-            // TODO - determine product description and timestamp from product
-            if (lastRenderer != null) {
-                productDescription = lastRenderer.getProductDescription();
-            }
-            productDescription = rendererInventory.getRenderer(
-                    productDisplay.get(productDisplay.keySet().iterator().next()).get(0).getProductCode()
-            ).getProductDescription();
-            drawTimestamp(canvas, timestamp, productDescription, color);
-        } else {
-            drawTimestamp(canvas, "No Data", null, Color.RED);
-        }
-        if (appMessage != null) {
-            if (System.currentTimeMillis()-appMessageTimestamp > TimeUnit.MILLISECONDS.convert(10,TimeUnit.SECONDS)) {
-                appMessage = null;
-            } else {
-                drawMessage(canvas, appMessage);
-            }
-        }
-
     }
 
     private void drawMessage(Canvas canvas, AppMessage message) {
@@ -486,10 +484,20 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
 
     public void onEvent(BitmapEvent bitmapEvent) {
         Log.d(TAG,"received bitmap from renderer!");
+        releaseBitmap();
         backingBitmap = bitmapEvent.getBitmap();
         inhibitRegenerate = false;
+        scaling = false;
         appMessage = null;
         this.invalidate();
+    }
+
+    public void releaseBitmap() {
+        if (backingBitmap != null) {
+            backingBitmap.recycle();
+            backingBitmap = null;
+            System.gc();
+        }
     }
 
     protected void regenerateBitmap(LatLongRect bitmapRegion) {
@@ -575,14 +583,6 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     }
 
 
-    public void releaseBitmap() {
-        if (backingBitmap != null) {
-            Log.d(TAG,"recycling backing bitmap");
-            backingBitmap.recycle();
-            backingBitmap = null;
-            System.gc();
-        }
-    }
 
     /**
      * Determine the adjusted LatLong coverage of the bitmap that will back the view. The actual span
