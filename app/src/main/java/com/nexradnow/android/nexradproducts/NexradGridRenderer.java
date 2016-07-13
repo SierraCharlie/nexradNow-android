@@ -111,11 +111,7 @@ public abstract class NexradGridRenderer implements NexradRenderer {
                         continue;
                     }
                     // Translate to location and fill rectangle with value
-                    float plotValue = ((float)cellValue-5)/70.0f;
-                    if (plotValue > 1) {
-                        plotValue = 1.0f;
-                    }
-                    int color = getColor(plotValue);
+                    int color = getColorFromTable(cellValue / 100.0f);
                     float ptLatStart = (float)((float)numCells-y)/(float)numCells*latSpan + latOrigin;
                     float ptLonStart = (float)x/(float)numCells*lonSpan + lonOrigin;
                     LatLongCoordinates origin = new LatLongCoordinates(ptLatStart, ptLonStart);
@@ -178,4 +174,28 @@ public abstract class NexradGridRenderer implements NexradRenderer {
         return Color.HSVToColor(hsv);
     }
 
+    static int[] colorTable = {
+            Color.rgb(93,225,117), // 5 db
+            Color.rgb(80,197,65), // 10 db
+            Color.rgb(65,164,49), // 15 db
+            Color.rgb(53,136,40), // 20 db
+            Color.rgb(41,109,37), // 25 db
+            Color.rgb(34,94,31), // 30 db
+            Color.rgb(249,239,0), // 35 db
+            Color.rgb(238,188,0), // 40 db
+            Color.rgb(240,144,0), // 45 db
+            Color.rgb(228,108,0), // 50 db
+            Color.rgb(214,42,0), // 55 db
+            Color.rgb(164,29,0), // 60 db
+            Color.rgb(217,35,143), // 65 db
+            Color.rgb(159,0,211), // 70 db
+            Color.rgb(106,2,118) // 75 db and up
+    };
+
+    protected int getColorFromTable(float power)
+    {
+        int index = ((int)(power * 100.0)/5)-1;
+        if (index >= colorTable.length) { index = colorTable.length-1;}
+        return colorTable[index];
+    }
 }

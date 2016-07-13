@@ -4,10 +4,8 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PointF;
-import android.util.Log;
 import com.nexradnow.android.exception.NexradNowException;
 import com.nexradnow.android.model.LatLongCoordinates;
-import com.nexradnow.android.model.LatLongRect;
 import com.nexradnow.android.model.LatLongScaler;
 import com.nexradnow.android.model.NexradProduct;
 import com.nexradnow.android.model.NexradStation;
@@ -216,12 +214,9 @@ lon2 = lon1 + atan2(sin(θ)*sin(d/R)*cos(lat1), cos(d/R)−sin(lat1)*sin(lat2))
                     }
 
                     // Do the drawing deed.
-                    float plotValue = ((float)cellValue-5)/70.0f;
-                    if (plotValue > 1) {
-                        plotValue = 1.0f;
-                    }
-                    int color = getColor(plotValue);
+                    int color = getColorFromTable(cellValue / 100.0f);
                     productPaint.setColor(color);
+
                     productPaint.setStrokeWidth(1.5f);
                     productPaint.setStyle(Paint.Style.FILL_AND_STROKE);
                     polyPath.reset();
