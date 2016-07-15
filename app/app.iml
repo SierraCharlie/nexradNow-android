@@ -95,14 +95,14 @@
     <orderEntry type="library" exported="" name="play-services-drive-7.8.0" level="project" />
     <orderEntry type="library" exported="" name="jcommander-1.35" level="project" />
     <orderEntry type="library" exported="" name="cdm-4.5.5" level="project" />
-    <orderEntry type="library" exported="" name="commons-net-3.3" level="project" />
     <orderEntry type="library" exported="" name="commons-lang-2.4" level="project" />
+    <orderEntry type="library" exported="" name="commons-net-3.3" level="project" />
     <orderEntry type="library" exported="" name="httpservices-4.5.5" level="project" />
     <orderEntry type="library" exported="" name="support-v4-23.0.0" level="project" />
     <orderEntry type="library" exported="" name="quartz-2.2.0" level="project" />
     <orderEntry type="library" exported="" name="play-services-base-7.8.0" level="project" />
-    <orderEntry type="library" exported="" name="netcdf4-4.5.5" level="project" />
     <orderEntry type="library" exported="" name="slf4j-api-1.7.7" level="project" />
+    <orderEntry type="library" exported="" name="netcdf4-4.5.5" level="project" />
     <orderEntry type="library" exported="" name="httpmime-4.2.6" level="project" />
     <orderEntry type="library" exported="" name="classindex-3.4" level="project" />
     <orderEntry type="library" exported="" name="udunits-4.5.5" level="project" />
@@ -124,8 +124,8 @@
     <orderEntry type="library" exported="" name="c3p0-0.9.1.1" level="project" />
     <orderEntry type="library" exported="" name="jsr305-1.3.9" level="project" />
     <orderEntry type="library" exported="" name="play-services-safetynet-7.8.0" level="project" />
-    <orderEntry type="library" exported="" name="bzip2-0.9.1" level="project" />
     <orderEntry type="library" exported="" name="jna-4.1.0" level="project" />
+    <orderEntry type="library" exported="" name="bzip2-0.9.1" level="project" />
     <orderEntry type="library" exported="" name="play-services-7.8.0" level="project" />
     <orderEntry type="library" exported="" name="support-annotations-23.0.0" level="project" />
     <orderEntry type="library" exported="" name="play-services-fitness-7.8.0" level="project" />

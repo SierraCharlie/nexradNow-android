@@ -5,6 +5,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import com.nexradnow.android.model.AppMessage;
 import com.nexradnow.android.model.NexradUpdate;
+import org.apache.commons.io.FileUtils;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -51,6 +52,23 @@ public class NexradNowFileUtils {
         bitmap.compress(Bitmap.CompressFormat.PNG,100,fileStream);
         fileStream.close();
         return outputFile;
+    }
+
+    public static void clearCacheFiles(Context ctx, String prefix, String extension) {
+        File cacheDir = ctx.getCacheDir();
+        for (File eachFile : cacheDir.listFiles()) {
+            if (eachFile.getName().startsWith(prefix) && (eachFile.getName().endsWith("."+extension))) {
+                FileUtils.deleteQuietly(eachFile);
+            }
+        }
+
+    }
+
+    public static void clearCacheDir(Context ctx) {
+        File cacheDir = ctx.getCacheDir();
+        for (File eachFile : cacheDir.listFiles()) {
+            FileUtils.deleteQuietly(eachFile);
+        }
     }
 
     public static Bitmap readBitmapFromFile(File file) throws IOException {

@@ -115,6 +115,7 @@ public class NexradApp  extends MultiDexApplication {
                             postMessage("Error receiving bitmap: "+ioex.toString(), AppMessage.Type.ERROR);
                         }
                         bitmapFile.delete();
+                        NexradNowFileUtils.clearCacheFiles(NexradApp.this,"bitmap","tmp");
                         if (result != null) {
                             LatLongRect resultRect = (LatLongRect) intent.getSerializableExtra("com.nexradnow.android.latLongRect");
                             BitmapEvent event = new BitmapEvent(result, resultRect);
@@ -132,6 +133,7 @@ public class NexradApp  extends MultiDexApplication {
                 }
             }
         };
+        NexradNowFileUtils.clearCacheDir(this);
         IntentFilter filter = new IntentFilter();
         filter.addAction(LocationInfoIntent.GEOCODELOCATIONACTION);
         filter.addAction(DataRefreshIntent.GETWXACTION);

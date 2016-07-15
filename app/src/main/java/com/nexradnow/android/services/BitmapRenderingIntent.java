@@ -78,6 +78,7 @@ public class BitmapRenderingIntent extends RoboIntentService {
         try {
             update = (NexradUpdate)NexradNowFileUtils.readObjectFromFile(updateFile);
             updateFile.delete();
+            NexradNowFileUtils.clearCacheFiles(this.getApplicationContext(),"wxdat","tmp");
         } catch (Exception ioex) {
             intent.putExtra("com.nexradnow.android.status", STATUS_ERROR);
             intent.putExtra("com.nexradnow.android.errmsg", "update read error: "+ioex.toString());
