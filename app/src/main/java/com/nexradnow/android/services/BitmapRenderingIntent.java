@@ -159,7 +159,7 @@ public class BitmapRenderingIntent extends RoboIntentService {
             int stationIndex = 0;
             for (NexradStation station: containedStations) {
                 stationIndex++;
-                int percentComplete = stationIndex*100/stationCount;
+                int percentComplete = (stationIndex*100)/stationCount;
                 String progressMessage = "Rendering ["+percentComplete+"%]";
                 notifyProgress(intent, progressMessage);
                 if ((nexradProduct.get(station) != null)

@@ -7,7 +7,10 @@
 
     <string name="msg_refreshing_wx">Refreshing weather data</string>
     <string name="msg_getting_station_list">Retrieving list of Nexrad stations</string>
+    <string name="msg_getting_station_data">Retrieving Nexrad Data</string>
     <string name="msg_getting_data_for_station">Retrieving data for station</string>
+    <string name="msg_received_data_for_station">Received data for station</string>
+
 
     <string name="err_no_location">no location - cannot proceed</string>
 

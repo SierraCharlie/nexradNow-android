@@ -195,6 +195,7 @@ public abstract class NexradGridRenderer implements NexradRenderer {
     protected int getColorFromTable(float power)
     {
         int index = ((int)(power * 100.0)/5)-1;
+        if (index < 0) { index = 0; }
         if (index >= colorTable.length) { index = colorTable.length-1;}
         return colorTable[index];
     }

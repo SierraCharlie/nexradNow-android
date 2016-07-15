@@ -50,6 +50,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -308,10 +309,16 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
                 color = Color.RED;
             }
             String productCode = null;
-            try {
-                productCode = productDisplay.entrySet().iterator().next().getValue().get(0).getProductCode();
-            } catch (Exception ex) {
-                // NPE etc.
+            Iterator<Map.Entry<NexradStation, List<NexradProduct>>> iterator = productDisplay.entrySet().iterator();
+            while (iterator.hasNext()&&(productCode==null)) {
+                try {
+                    productCode = iterator.next().getValue().get(0).getProductCode();
+                    if (productCode != null) {
+                        break;
+                    }
+                } catch (Exception ex) {
+                    productCode = null;
+                }
             }
             if (productCode != null) {
                 productDescription = rendererInventory.getRenderer(productCode).getProductDescription();

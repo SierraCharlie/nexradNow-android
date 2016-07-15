@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
+import android.support.annotation.NonNull;
 import android.support.v4.content.LocalBroadcastManager;
 import com.google.inject.Inject;
 import com.nexradnow.android.app.R;
@@ -17,8 +18,18 @@ import roboguice.service.RoboIntentService;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Created by hobsonm on 9/15/15.
@@ -30,6 +41,11 @@ public class DataRefreshIntent extends RoboIntentService {
             super(detailMessage);
         }
     };
+
+    protected class NexradResult {
+        protected NexradStation station;
+        protected List<NexradProduct> products;
+    }
 
     public static final int STATUS_RUNNING = 0;
     public static final int STATUS_FINISHED = 1;
@@ -71,11 +87,11 @@ public class DataRefreshIntent extends RoboIntentService {
             intent.putExtra("com.nexradnow.android.status", STATUS_FINISHED);
             LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
         } catch (Exception ex) {
-            notifyException(intent, ex);
+            notifyException(this,intent, ex);
         }
     }
 
-    protected void wxAction(Intent intent) {
+    protected void wxAction(final Intent intent) {
         intent.setAction(GETWXACTION);
         try {
             LatLongCoordinates coords = (LatLongCoordinates) intent.getSerializableExtra("com.nexradnow.android.coords");
@@ -91,34 +107,68 @@ public class DataRefreshIntent extends RoboIntentService {
             if (coords.distanceTo(stations.get(0).getCoords()) > maxDistance) {
                 throw new DataRefreshIntentException("No Nexrad stations within "+maxDistance+" km");
             }
+            intent.putExtra("com.nexradnow.android.statusmsg",
+                    getResources().getString(R.string.msg_getting_station_data));
+            LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
             HashMap<NexradStation, List<NexradProduct>> productMap = new HashMap<NexradStation, List<NexradProduct>>();
-            for (NexradStation station : stations) {
+            Collection<Callable<NexradResult>> tasks = new ArrayList<Callable<NexradResult>>();
+            for (final NexradStation station : stations) {
                 if (coords.distanceTo(station.getCoords()) > maxDistance) {
                     continue;
                 }
-                intent.putExtra("com.nexradnow.android.statusmsg",
-                        getResources().getString(R.string.msg_getting_data_for_station) + " "
-                                + station.getIdentifier());
-                LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
-                try {
-                    List<NexradProduct> products = nexradDataManager.getNexradProducts(
-                            intent.getStringExtra("com.nexradnow.android.productcode"), station, 30);
-                    productMap.put(station, products);
-                } catch (NexradNowException nex) {
-                    notifyException(intent, nex);
-                    productMap.put(station,new ArrayList<NexradProduct>());
+                Callable<NexradResult> retriever = new Callable<NexradResult>() {
+                    NexradDataManager dataManager = nexradDataManager;
+                    NexradStation stationCode = station;
+                    String productCode = intent.getStringExtra("com.nexradnow.android.productcode");
+                    int ageMaxMinutes = 30;
+                    Intent parentIntent = intent;
+                    Context ctx = DataRefreshIntent.this.getApplicationContext();
+
+                    @Override
+                    public NexradResult call() throws Exception {
+                        NexradResult results = null;
+                        try {
+                            List<NexradProduct> radarData = nexradDataManager.getNexradProducts(productCode, stationCode,
+                                    ageMaxMinutes);
+                            results = new NexradResult();
+                            results.products = radarData;
+                            results.station = stationCode;
+                            synchronized (parentIntent) {
+                                parentIntent.putExtra("com.nexradnow.android.statusmsg",
+                                        getResources().getString(R.string.msg_received_data_for_station) +
+                                                " " + stationCode.getIdentifier());
+                                LocalBroadcastManager.getInstance(ctx).sendBroadcast(parentIntent);
+                            }
+                        } catch (Exception ex) {
+                            synchronized (parentIntent) {
+                                notifyException(ctx, parentIntent, ex);
+                            }
+                        }
+                        return results;
+                    }
+                };
+                tasks.add(retriever);
+            }
+            ExecutorService executor = new ThreadPoolExecutor(4, 8, 10, TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(tasks.size()));
+            try {
+                List<Future<NexradResult>> results = executor.invokeAll(tasks);
+                executor.shutdown();
+                for (Future<NexradResult> eachResult : results) {
+                    productMap.put(eachResult.get().station,eachResult.get().products);
                 }
+            } catch (Exception ex) {
+                notifyException(this,intent,ex);
             }
             intent.putExtra("com.nexradnow.android.productmap", productMap);
             intent.putExtra("com.nexradnow.android.status", STATUS_FINISHED);
             intent.putExtra("com.nexradnow.android.coords", coords);
             LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
         } catch (Exception ex) {
-            notifyException(intent, ex);
+            notifyException(this, intent, ex);
         }
     }
 
-    private void notifyException(Intent intent, Exception ex) {
+    protected static void notifyException(Context ctx, Intent intent, Exception ex) {
         if (ex instanceof DataRefreshIntentException) {
             intent.putExtra("com.nexradnow.android.errmsg", ex.getMessage());
         } else if (ex instanceof NexradNowException ){
@@ -127,6 +177,6 @@ public class DataRefreshIntent extends RoboIntentService {
             intent.putExtra("com.nexradnow.android.errmsg", ex.toString());
         }
         intent.putExtra("com.nexradnow.android.status", STATUS_ERROR);
-        LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+        LocalBroadcastManager.getInstance(ctx).sendBroadcast(intent);
     }
 }
