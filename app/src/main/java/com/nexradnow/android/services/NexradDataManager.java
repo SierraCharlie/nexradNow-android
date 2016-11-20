@@ -28,6 +28,7 @@ import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.URL;
 import java.net.URLConnection;
@@ -83,7 +84,22 @@ public class NexradDataManager {
                     ctx.getString(R.string.pref_nexrad_stationlist_default));
             try {
                 URL url = new URL(urlString);
-                URLConnection conn = url.openConnection();
+                HttpURLConnection conn = (HttpURLConnection)url.openConnection();
+                conn.setInstanceFollowRedirects(true);
+                conn.connect();
+                int response = conn.getResponseCode();
+                if ((response == HttpURLConnection.HTTP_MOVED_TEMP)||
+                        (response == HttpURLConnection.HTTP_MOVED_PERM)) {
+                    String location = conn.getHeaderField("Location");
+                    url = new URL(location);
+                    conn.disconnect();
+                    conn = (HttpURLConnection)url.openConnection();
+                    response = conn.getResponseCode();
+                }
+                if (response != HttpURLConnection.HTTP_OK) {
+                    throw new IOException("Bad HTTP response: "+response);
+                }
+                URL targetUrl = conn.getURL();
                 InputStream is = conn.getInputStream();
                 List<String> stationList = IOUtils.readLines(is);
                 results = new ArrayList<NexradStation>();
@@ -110,6 +126,9 @@ public class NexradDataManager {
                     if ("KOUN".equals(station.getIdentifier())) { continue; }
                     if ("KCRI".equals(station.getIdentifier())) { continue; }
                     results.add(station);
+                }
+                if (results.isEmpty()) {
+                    throw new IOException("No NEXRAD stations retrieved");
                 }
             } catch (IOException ioex) {
                 Log.e(TAG, "error fetching list of NEXRAD stations", ioex);
