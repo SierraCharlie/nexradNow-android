@@ -1,31 +1,29 @@
 package com.nexradnow.android.services;
 
+import android.app.IntentService;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
-import android.support.annotation.NonNull;
 import android.support.v4.content.LocalBroadcastManager;
-import com.google.inject.Inject;
+import com.nexradnow.android.app.NexradApp;
 import com.nexradnow.android.app.R;
 import com.nexradnow.android.app.SettingsActivity;
 import com.nexradnow.android.exception.NexradNowException;
 import com.nexradnow.android.model.LatLongCoordinates;
 import com.nexradnow.android.model.NexradProduct;
 import com.nexradnow.android.model.NexradStation;
-import roboguice.service.RoboIntentService;
+import toothpick.Toothpick;
 
+import javax.inject.Inject;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.Callable;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -34,7 +32,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * Created by hobsonm on 9/15/15.
  */
-public class DataRefreshIntent extends RoboIntentService {
+
+public class DataRefreshIntent extends IntentService {
 
     protected class DataRefreshIntentException extends Exception {
         public DataRefreshIntentException(String detailMessage) {
@@ -57,17 +56,14 @@ public class DataRefreshIntent extends RoboIntentService {
     public static final String GETSTATIONACTION = "com.nexradnow.android.stationlisting";
 
     @Inject
-    protected Context ctx;
-
-    @Inject
     protected NexradDataManager nexradDataManager;
 
     public DataRefreshIntent() {
         super(DataRefreshIntent.class.getName());
+        Toothpick.inject(this,Toothpick.openScope(NexradApp.APPSCOPE));
     }
 
     @Override
-
     protected void onHandleIntent(Intent intent) {
         if (GETWXACTION.equals(intent.getAction())) {
             wxAction(intent);
@@ -101,7 +97,7 @@ public class DataRefreshIntent extends RoboIntentService {
             List<NexradStation> srcStations = nexradDataManager.getNexradStations();
             // TODO: handle null or empty list due to download/cache failure
             List<NexradStation> stations = nexradDataManager.sortClosest(srcStations, coords);
-            SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(ctx);
+            SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
             int maxDistance = Integer.parseInt(sharedPref.getString(SettingsActivity.KEY_PREF_NEXRAD_STATIONDISTANCE,"160"));
             // Pick the four closest stations IF the distance to the nearest is less than 350 km.
             if (coords.distanceTo(stations.get(0).getCoords()) > maxDistance) {

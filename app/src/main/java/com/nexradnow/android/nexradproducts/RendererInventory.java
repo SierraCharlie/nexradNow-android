@@ -1,8 +1,8 @@
 package com.nexradnow.android.nexradproducts;
 
-import com.google.inject.Singleton;
-import org.atteo.classindex.ClassIndex;
 
+import javax.inject.Inject;
+import javax.inject.Singleton;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -13,16 +13,17 @@ import java.util.List;
  * Maintain a list of available renderers
  * Created by hobsonm on 10/15/15.
  */
-@Singleton
 public class RendererInventory {
 
+    protected static Class knownClasses[] =
+            {P19r0Renderer.class, P20MinusRRenderer.class, P37crRenderer.class, P38crRenderer.class};
     protected NexradRenderer[] renderers;
     protected String[] codes;
     protected String[] descriptions;
 
     public RendererInventory() {
         List<NexradRenderer> rendererList = new ArrayList<NexradRenderer>();
-        for (Class<?> klass : ClassIndex.getSubclasses(NexradRenderer.class)) {
+        for (Class<?> klass : knownClasses) {
             try {
                 if (!Modifier.isAbstract(klass.getModifiers())) {
                     rendererList.add(((Class<NexradRenderer>) klass).newInstance());

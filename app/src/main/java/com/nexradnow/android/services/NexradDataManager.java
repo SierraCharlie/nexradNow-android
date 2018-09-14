@@ -4,8 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
 import android.util.Log;
-import com.google.inject.Inject;
-import com.google.inject.Singleton;
+import com.nexradnow.android.app.NexradApp;
 import com.nexradnow.android.app.R;
 import com.nexradnow.android.app.SettingsActivity;
 import com.nexradnow.android.exception.NexradNowException;
@@ -19,7 +18,9 @@ import org.apache.commons.net.ftp.FTP;
 import org.apache.commons.net.ftp.FTPClient;
 import org.apache.commons.net.ftp.FTPClientConfig;
 import org.apache.commons.net.ftp.FTPFile;
+import toothpick.Toothpick;
 
+import javax.inject.Inject;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -31,7 +32,6 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.URL;
-import java.net.URLConnection;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
@@ -48,17 +48,21 @@ import java.util.concurrent.TimeUnit;
  * product types, and actual recent station data as needed.
  *
  */
-@Singleton
 public class NexradDataManager {
 
-    @Inject
-    protected Context ctx;
 
     public final static String TAG="NEXRADDATA";
     protected final static String CACHESTATIONFILE = "nxstations.obj";
 
     protected Map<NexradStation,Map<String,NexradProductCache>> cache =
             new HashMap<NexradStation, Map<String, NexradProductCache>>();
+
+    @Inject
+    protected Context ctx;
+
+    public NexradDataManager() {
+        Toothpick.inject(this,Toothpick.openScope(NexradApp.APPSCOPE));
+    }
 
     public List<NexradStation> getNexradStations () {
         List<NexradStation> results = null;
@@ -114,6 +118,9 @@ public class NexradDataManager {
                     // Fixed-length lines (verify length is as expected!)
                     line = line.trim();
                     if ((line.length() != 146) || (!line.endsWith("NEXRAD"))) {
+                        if (line.endsWith("TDWR")) {
+                            continue;
+                        }
                         throw new IOException("unexpected NEXRAD station list file format");
                     }
                     String identifier = line.substring(9, 13);

@@ -1,8 +1,8 @@
 package com.nexradnow.android.app;
 
+import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
@@ -14,30 +14,28 @@ import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.ListAdapter;
 import android.widget.RadioButton;
 import android.widget.Spinner;
 import android.widget.TextView;
-import com.google.inject.Inject;
 import com.nexradnow.android.model.LocationSelectionEvent;
 import com.nexradnow.android.model.NexradStation;
 import com.nexradnow.android.services.DataRefreshIntent;
-import com.nexradnow.android.services.EventBusProvider;
-import roboguice.RoboGuice;
-import roboguice.activity.RoboActivity;
+import de.greenrobot.event.EventBus;
+import toothpick.Toothpick;
 
+import javax.inject.Inject;
 import java.io.Serializable;
 import java.util.List;
 
 /**
  * Created by hobsonm on 10/14/15.
  */
-public class LocationSelectionActivity extends RoboActivity {
+public class LocationSelectionActivity extends Activity {
 
     public static final String TAG = "LocationSelActivity";
 
     @Inject
-    protected EventBusProvider eventBusProvider;
+    protected EventBus eventBus;
 
     protected List<NexradStation> stationList = null;
 
@@ -54,8 +52,8 @@ public class LocationSelectionActivity extends RoboActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        Toothpick.inject(this,Toothpick.openScope(NexradApp.APPSCOPE));
         super.onCreate(savedInstanceState);
-        RoboGuice.injectMembers(this, this);
         setContentView(R.layout.activity_choose_location);
         // eventBusProvider.getEventBus().register(this);
 
@@ -207,7 +205,7 @@ public class LocationSelectionActivity extends RoboActivity {
             event.setCityState(cityState);
         }
         if (event != null) {
-            eventBusProvider.getEventBus().post(event);
+            eventBus.post(event);
         }
         finish();
     }

@@ -1,20 +1,17 @@
 package com.nexradnow.android.services;
 
+import android.app.IntentService;
 import android.content.Context;
 import android.content.Intent;
 import android.location.Address;
 import android.location.Geocoder;
-import android.location.Location;
-import android.os.Bundle;
 import android.support.v4.content.LocalBroadcastManager;
-import com.google.android.gms.common.ConnectionResult;
-import com.google.android.gms.common.api.GoogleApiClient;
-import com.google.android.gms.location.LocationServices;
-import com.google.inject.Inject;
+import com.nexradnow.android.app.NexradApp;
 import com.nexradnow.android.exception.NexradNowException;
 import com.nexradnow.android.model.LatLongCoordinates;
-import roboguice.service.RoboIntentService;
+import toothpick.Toothpick;
 
+import javax.inject.Inject;
 import java.util.List;
 import java.util.Locale;
 
@@ -24,7 +21,7 @@ import java.util.Locale;
  *
  * Created by hobsonm on 10/8/15.
  */
-public class LocationInfoIntent extends RoboIntentService {
+public class LocationInfoIntent extends IntentService {
 
     public static final int STATUS_RUNNING = 0;
     public static final int STATUS_FINISHED = 1;
@@ -41,6 +38,7 @@ public class LocationInfoIntent extends RoboIntentService {
 
     public LocationInfoIntent() {
         super(LocationInfoIntent.class.getName());
+        Toothpick.inject(this,Toothpick.openScope(NexradApp.APPSCOPE));
     }
 
 

@@ -1,6 +1,5 @@
 package com.nexradnow.android.nexradproducts;
 
-import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import com.nexradnow.android.exception.NexradNowException;
@@ -8,7 +7,6 @@ import com.nexradnow.android.model.LatLongRect;
 import com.nexradnow.android.model.LatLongScaler;
 import com.nexradnow.android.model.NexradProduct;
 import com.nexradnow.android.model.NexradStation;
-import org.atteo.classindex.IndexSubclasses;
 
 import java.util.Collection;
 
@@ -18,7 +16,6 @@ import java.util.Collection;
  *
  * Created by hobsonm on 10/14/15.
  */
-@IndexSubclasses
 public interface NexradRenderer {
     /**
      * Return the simple product code (e.g. "p38cr") that this renderer is built for

@@ -10,11 +10,12 @@ import android.preference.Preference;
 import android.preference.PreferenceFragment;
 import android.preference.PreferenceScreen;
 import android.widget.ListAdapter;
-import com.google.inject.Inject;
 import com.nexradnow.android.nexradproducts.NexradRenderer;
 import com.nexradnow.android.nexradproducts.RendererInventory;
 import org.apache.commons.validator.routines.EmailValidator;
-import roboguice.activity.RoboActivity;
+import toothpick.Toothpick;
+
+import javax.inject.Inject;
 
 /**
  * This activity houses the "settings" portions of the application. The code here was pretty much
@@ -22,7 +23,8 @@ import roboguice.activity.RoboActivity;
  *
  * Created by hobsonm on 10/5/15.
  */
-public class SettingsActivity extends RoboActivity {
+
+public class SettingsActivity extends Activity {
 
     @Inject
     protected RendererInventory rendererInventory;
@@ -38,6 +40,7 @@ public class SettingsActivity extends RoboActivity {
             implements SharedPreferences.OnSharedPreferenceChangeListener {
         @Override
         public void onCreate(Bundle savedInstanceState) {
+            Toothpick.inject(this,Toothpick.openScope(NexradApp.APPSCOPE));
             super.onCreate(savedInstanceState);
 
             // Load the preferences from an XML resource
@@ -129,6 +132,7 @@ public class SettingsActivity extends RoboActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        Toothpick.inject(this,Toothpick.openScope(NexradApp.APPSCOPE));
         super.onCreate(savedInstanceState);
 
         // Display the fragment as the main content.

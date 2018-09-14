@@ -1,23 +1,14 @@
 package com.nexradnow.android.services;
 
+import android.app.IntentService;
 import android.content.Intent;
-import android.graphics.Bitmap;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Point;
-import android.graphics.PointF;
-import android.graphics.Rect;
+import android.graphics.*;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
+import com.nexradnow.android.app.NexradApp;
 import com.nexradnow.android.app.R;
 import com.nexradnow.android.exception.NexradNowException;
-import com.nexradnow.android.model.LatLongCoordinates;
-import com.nexradnow.android.model.LatLongRect;
-import com.nexradnow.android.model.LatLongScaler;
-import com.nexradnow.android.model.NexradProduct;
-import com.nexradnow.android.model.NexradStation;
-import com.nexradnow.android.model.NexradUpdate;
+import com.nexradnow.android.model.*;
 import com.nexradnow.android.nexradproducts.NexradRenderer;
 import com.nexradnow.android.nexradproducts.RendererInventory;
 import com.nexradnow.android.util.NexradNowFileUtils;
@@ -26,24 +17,18 @@ import org.nocrala.tools.gis.data.esri.shapefile.header.ShapeFileHeader;
 import org.nocrala.tools.gis.data.esri.shapefile.shape.AbstractShape;
 import org.nocrala.tools.gis.data.esri.shapefile.shape.PointData;
 import org.nocrala.tools.gis.data.esri.shapefile.shape.shapes.AbstractPolyShape;
-import roboguice.service.RoboIntentService;
+import toothpick.Toothpick;
 
+import javax.inject.Inject;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
 import java.io.InputStream;
-import java.io.ObjectInputStream;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Create a bitmap from the supplied Nexrad products and desired display geometry.
  * Created by hobsonm on 10/23/15.
  */
-public class BitmapRenderingIntent extends RoboIntentService {
+public class BitmapRenderingIntent extends IntentService {
 
     public static final int STATUS_RUNNING = 0;
     public static final int STATUS_FINISHED = 1;
@@ -53,11 +38,39 @@ public class BitmapRenderingIntent extends RoboIntentService {
 
     public static String RENDERACTION = "com.nexradnow.android.renderBitmap";
 
-    private RendererInventory rendererInventory;
+    @Inject
+    protected RendererInventory rendererInventory;
 
     public BitmapRenderingIntent() {
         super(BitmapRenderingIntent.class.getName());
-        rendererInventory = new RendererInventory();
+        Toothpick.inject(this,Toothpick.openScope(NexradApp.APPSCOPE));
+    }
+
+    /**
+     * Given a point in lat/long coordinates, and a pixel area of size pixelRect that covers
+     * the region described by lat/long region coordRect, compute the pixel location of this
+     * point in that space.
+     * @param coords
+     * @param coordRect
+     * @param pixelRect
+     * @return
+     */
+    private static Point scaleCoordinate (LatLongCoordinates coords, LatLongRect coordRect, Rect pixelRect) {
+        double latOffset = coords.getLatitude() - coordRect.bottom;
+        double longOffset = coords.getLongitude() - coordRect.left;
+        int pixY = (int)((latOffset*(double)pixelRect.height())/coordRect.height());
+        // Transform to correct Y-scale
+        pixY = pixelRect.height() - pixY;
+        int pixX = (int)((longOffset*(double)pixelRect.width())/coordRect.width());
+        return new Point(pixX,pixY);
+    }
+
+    private static LatLongCoordinates scalePoint(Point point, LatLongRect coordRect, Rect pixelRect) {
+        int xOffset = point.x - pixelRect.left;
+        int yOffset = point.y - pixelRect.top;
+        double longValue = coordRect.left + (float)xOffset/(float)pixelRect.width()* coordRect.width();
+        double latValue = coordRect.top - (float)yOffset/(float)pixelRect.height() * coordRect.height();
+        return new LatLongCoordinates(latValue, longValue);
     }
 
     @Override
@@ -68,8 +81,6 @@ public class BitmapRenderingIntent extends RoboIntentService {
         }
         Log.d(TAG,"Rendering Complete");
     }
-
-
 
     private void renderBitmap(Intent intent) {
         // read update from cache file and then delete
@@ -242,7 +253,6 @@ public class BitmapRenderingIntent extends RoboIntentService {
         }
     }
 
-
     private void drawMap(Canvas canvas, LatLongRect latLongRect, Rect pixelSize, float displayDensity) {
         try {
             InputStream is = this.getApplicationContext().getResources().openRawResource(R.raw.cb_2014_us_state_20m);
@@ -318,34 +328,6 @@ public class BitmapRenderingIntent extends RoboIntentService {
      */
     public int scalePixels (float dp, float displayDensity) {
         return (int)((float)dp * displayDensity + 0.5f);
-    }
-
-
-    /**
-     * Given a point in lat/long coordinates, and a pixel area of size pixelRect that covers
-     * the region described by lat/long region coordRect, compute the pixel location of this
-     * point in that space.
-     * @param coords
-     * @param coordRect
-     * @param pixelRect
-     * @return
-     */
-    private static Point scaleCoordinate (LatLongCoordinates coords, LatLongRect coordRect, Rect pixelRect) {
-        double latOffset = coords.getLatitude() - coordRect.bottom;
-        double longOffset = coords.getLongitude() - coordRect.left;
-        int pixY = (int)((latOffset*(double)pixelRect.height())/coordRect.height());
-        // Transform to correct Y-scale
-        pixY = pixelRect.height() - pixY;
-        int pixX = (int)((longOffset*(double)pixelRect.width())/coordRect.width());
-        return new Point(pixX,pixY);
-    }
-
-    private static LatLongCoordinates scalePoint(Point point, LatLongRect coordRect, Rect pixelRect) {
-        int xOffset = point.x - pixelRect.left;
-        int yOffset = point.y - pixelRect.top;
-        double longValue = coordRect.left + (float)xOffset/(float)pixelRect.width()* coordRect.width();
-        double latValue = coordRect.top - (float)yOffset/(float)pixelRect.height() * coordRect.height();
-        return new LatLongCoordinates(latValue, longValue);
     }
 
     private void plotProduct(Canvas canvas, final LatLongRect latLongRect, final Rect pixelSize, NexradProduct product,

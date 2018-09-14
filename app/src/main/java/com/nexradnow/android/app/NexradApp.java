@@ -1,5 +1,6 @@
 package com.nexradnow.android.app;
 
+import android.app.Application;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -9,10 +10,8 @@ import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
 import android.preference.PreferenceManager;
-import android.support.multidex.MultiDexApplication;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
-import com.google.inject.Inject;
 import com.nexradnow.android.model.AppMessage;
 import com.nexradnow.android.model.BitmapEvent;
 import com.nexradnow.android.model.LatLongCoordinates;
@@ -22,15 +21,17 @@ import com.nexradnow.android.model.LocationSelectionEvent;
 import com.nexradnow.android.model.NexradProduct;
 import com.nexradnow.android.model.NexradStation;
 import com.nexradnow.android.model.NexradUpdate;
+import com.nexradnow.android.modules.DIModule;
 import com.nexradnow.android.services.BitmapRenderingIntent;
 import com.nexradnow.android.services.DataRefreshIntent;
-import com.nexradnow.android.services.EventBusProvider;
 import com.nexradnow.android.services.LocationInfoIntent;
 import com.nexradnow.android.util.NexradNowFileUtils;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
-import roboguice.RoboGuice;
+import de.greenrobot.event.EventBus;
+import toothpick.Scope;
+import toothpick.Toothpick;
+import toothpick.config.Module;
 
+import javax.inject.Inject;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -41,21 +42,21 @@ import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Application class that contains the intent launcher for the data refresh.
  *
  * Created by hobsonm on 10/2/15.
  */
-public class NexradApp  extends MultiDexApplication {
+public class NexradApp  extends Application {
 
     protected static final String TAG="NexradApp";
 
     protected static final String CACHELOCATIONFILE="LocationData";
 
+    public static final String APPSCOPE="NexradApp";
     @Inject
-    protected EventBusProvider eventBusProvider;
+    protected EventBus eventBus;
 
     /**
      * Last valid location used by the app
@@ -70,9 +71,13 @@ public class NexradApp  extends MultiDexApplication {
 
     @Override
     public void onCreate() {
+        Module diModule = new DIModule();
+        ((DIModule) diModule).addCtx(this);
+        Scope appScope = Toothpick.openScope(APPSCOPE);
+        appScope.installModules(diModule);
+        Toothpick.inject(this, appScope);
         super.onCreate();
-        RoboGuice.getInjector(getApplicationContext()).injectMembers(this);
-        eventBusProvider.getEventBus().register(this);
+        eventBus.register(this);
         BroadcastReceiver receiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -83,7 +88,7 @@ public class NexradApp  extends MultiDexApplication {
                                 (Map<NexradStation, List<NexradProduct>>) intent.getSerializableExtra("com.nexradnow.android.productmap");
                         LatLongCoordinates centerPoint = (LatLongCoordinates) intent.getSerializableExtra("com.nexradnow.android.coords");
                         NexradUpdate nexradUpdate = new NexradUpdate(products, centerPoint);
-                        eventBusProvider.getEventBus().post(nexradUpdate);
+                        eventBus.post(nexradUpdate);
                     } else if (status == DataRefreshIntent.STATUS_ERROR) {
                         postMessage(intent.getStringExtra("com.nexradnow.android.errmsg"), AppMessage.Type.ERROR);
                     } else if (status == DataRefreshIntent.STATUS_RUNNING) {
@@ -96,7 +101,7 @@ public class NexradApp  extends MultiDexApplication {
                     // TODO: handle location events
                     if (status == LocationInfoIntent.STATUS_FINISHED) {
                         LatLongCoordinates coords = (LatLongCoordinates)intent.getSerializableExtra("com.nexradnow.android.coords");
-                        eventBusProvider.getEventBus().post(new LocationChangeEvent(coords));
+                        eventBus.post(new LocationChangeEvent(coords));
                     } else if (status == LocationInfoIntent.STATUS_ERROR) {
                         postMessage(intent.getStringExtra("com.nexradnow.android.errmsg"), AppMessage.Type.ERROR);
                     } else if (status == LocationInfoIntent.STATUS_RUNNING) {
@@ -119,7 +124,7 @@ public class NexradApp  extends MultiDexApplication {
                         if (result != null) {
                             LatLongRect resultRect = (LatLongRect) intent.getSerializableExtra("com.nexradnow.android.latLongRect");
                             BitmapEvent event = new BitmapEvent(result, resultRect);
-                            eventBusProvider.getEventBus().post(event);
+                            eventBus.post(event);
                         }
                     } else if (status == BitmapRenderingIntent.STATUS_ERROR) {
                         postMessage(intent.getStringExtra("com.nexradnow.android.errmsg"), AppMessage.Type.ERROR);
@@ -195,7 +200,7 @@ public class NexradApp  extends MultiDexApplication {
     }
 
     private void postMessage(String msgText, AppMessage.Type msgType) {
-        eventBusProvider.getEventBus().post(new AppMessage(msgText, msgType));
+        eventBus.post(new AppMessage(msgText, msgType));
     }
 
     public void refreshWeather() {
@@ -219,7 +224,7 @@ public class NexradApp  extends MultiDexApplication {
 
     public void requestCurrentLocation() {
         if (lastGpsLocation != null) {
-            eventBusProvider.getEventBus().post(new LocationChangeEvent(lastGpsLocation));
+            eventBus.post(new LocationChangeEvent(lastGpsLocation));
         }
     }
 
@@ -255,7 +260,7 @@ public class NexradApp  extends MultiDexApplication {
             case NEXRADSTATION:
                 locationMode = LocationMode.NEXRAD;
                 LocationChangeEvent locationChangeEvent = new LocationChangeEvent(locationSelection.getStation().getCoords());
-                eventBusProvider.getEventBus().post(locationChangeEvent);
+                eventBus.post(locationChangeEvent);
                 break;
             case CITYSTATE:
                 locationMode = LocationMode.GEOCODE;
