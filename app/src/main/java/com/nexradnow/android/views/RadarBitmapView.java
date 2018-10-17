@@ -19,6 +19,7 @@ import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
+import com.jakewharton.disklrucache.DiskLruCache;
 import com.nexradnow.android.app.NexradApp;
 import com.nexradnow.android.app.NexradView;
 import com.nexradnow.android.exception.NexradNowException;
@@ -32,16 +33,13 @@ import com.nexradnow.android.model.NexradStation;
 import com.nexradnow.android.model.NexradUpdate;
 import com.nexradnow.android.nexradproducts.NexradRenderer;
 import com.nexradnow.android.nexradproducts.RendererInventory;
+import toothpick.Toothpick;
 
-import java.io.Serializable;
+import javax.inject.Inject;
+import java.io.*;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -130,6 +128,9 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
 
     protected boolean inhibitRegenerate = false;
 
+    @Inject
+    protected DiskLruCache diskCache;
+
     public RadarBitmapView(Context context) {
         super(context);
         init();
@@ -146,6 +147,7 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     }
 
     private void init() {
+        Toothpick.inject(this,Toothpick.openScope(NexradApp.APPSCOPE));
         Log.d(TAG,"creating view instance");
         setSaveEnabled(true);
         rendererInventory = new RendererInventory();
@@ -687,7 +689,19 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
             savedState.putString("productDescription", productDescription);
         }
         if (productDisplay != null) {
-            savedState.putSerializable("productDisplay", (Serializable) productDisplay);
+            // use DiskLruCache to store this data rather than the bundle
+            // Maybe look at https://gist.github.com/VladSumtsov/c4af1f4b8fe5099ca809
+            String cacheUuid = UUID.randomUUID().toString();
+            try {
+                DiskLruCache.Editor cacheEditor = diskCache.edit(cacheUuid);
+                ObjectOutputStream cacheOut = new ObjectOutputStream(cacheEditor.newOutputStream(0));
+                cacheOut.writeObject(productDisplay);
+                cacheOut.close();
+                cacheEditor.commit();
+                diskCache.flush();
+            } catch( IOException ioez) {
+            }
+            savedState.putString("cacheUuid", cacheUuid);
         }
         if (viewCenter != null) {
             savedState.putInt("viewCenterX", viewCenter.x);
@@ -703,7 +717,17 @@ public class RadarBitmapView extends View implements GestureDetector.OnGestureLi
     private void readBundle(Bundle savedState) {
         selectedLocation = (LatLongCoordinates)savedState.getSerializable("selectedLocation");
         dataTimestamp = (Calendar)savedState.getSerializable("timestamp");
-        productDisplay = (Map)savedState.getSerializable("productDisplay");
+        String cacheUuid = savedState.getString("cacheUuid");
+        try {
+            DiskLruCache.Snapshot diskSnap = diskCache.get(cacheUuid);
+            ObjectInputStream objIn = new ObjectInputStream(diskSnap.getInputStream(0));
+            productDisplay = (Map)objIn.readObject();
+            objIn.close();
+            diskSnap.close();
+        } catch (Exception ioex) {
+
+        }
+
         productDescription = savedState.getString("productDescription");
         if ((selectedLocation!=null)&&(productDisplay!=null)&&(!productDisplay.isEmpty())) {
             if ((viewWidth > 0)&&(viewHeight>0)) {

@@ -71,8 +71,7 @@ public class NexradApp  extends Application {
 
     @Override
     public void onCreate() {
-        Module diModule = new DIModule();
-        ((DIModule) diModule).addCtx(this);
+        Module diModule = new DIModule(this);
         Scope appScope = Toothpick.openScope(APPSCOPE);
         appScope.installModules(diModule);
         Toothpick.inject(this, appScope);
