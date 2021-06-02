@@ -3,14 +3,14 @@ package com.nexradnow.android.nexradproducts;
 /**
  * Created by hobsonm on 10/16/15.
  */
-public class P19r0Renderer extends NexradRadialRenderer {
+public class P94r0Renderer extends NexradRadialRenderer {
     @Override
     public String getProductCode() {
-        return "p19r0";
+        return "p94r0";
     }
 
     @Override
     public String getProductDescription() {
-        return "Base reflectivity - 124 nmi Range";
+        return "Base reflectivity - 248 nmi Range";
     }
 }

@@ -16,7 +16,7 @@
 
     <string name="pref_nexrad_stationlist_title">Nexrad station list URL</string>
     <string name="pref_nexrad_stationlist_summ">List of Nexrad stations and locations</string>
-    <string name="pref_nexrad_stationlist_default">http://www.ncdc.noaa.gov/homr/file/nexrad-stations.txt</string>
+    <string name="pref_nexrad_stationlist_default">https://www.ncdc.noaa.gov/homr/file/nexrad-stations.txt</string>
 
     <string name="pref_nexrad_ftphost_title">Nexrad FTP Host</string>
     <string name="pref_nexrad_ftphost_summ">Hostname for Nexrad Radar Operations Center FTP site</string>

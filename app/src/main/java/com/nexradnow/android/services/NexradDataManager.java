@@ -226,6 +226,8 @@ public class NexradDataManager {
             productCache.setFtpContents(productContents);
             stationCache.put(productCode,productCache);
             for (FTPFile file : productContents.getFileList()) {
+                String fileTime = file.getTimestamp().toString();
+                String fileName = file.getName();
                 if ((file.getTimestamp().getTimeInMillis()>nowCal.getTimeInMillis()-ageMaxMinutes*60*1000)&&
                         (!"sn.last".equals(file.getName()))&&(file.getName().startsWith("sn."))) {
                     // qualifies!
@@ -296,12 +298,14 @@ public class NexradDataManager {
 
     private boolean initFtp(FTPClient ftpClient, String ftpHost, String eMailAddress) throws Exception {
         if (ftpClient.isConnected()) {
+            ftpClient.enterLocalPassiveMode();
             return false;
         }
         ftpClient.connect(InetAddress.getByName(ftpHost));
         ftpClient.enterLocalPassiveMode();
         ftpClient.login("anonymous", eMailAddress);
         ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
+
         return true;
     }
 }

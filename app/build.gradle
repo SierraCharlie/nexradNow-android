@@ -1,15 +1,15 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 26
-    buildToolsVersion "27.0.3"
+    compileSdkVersion 30
+    buildToolsVersion "29.0.3"
 
     defaultConfig {
         applicationId "com.nexradnow.android.app"
-        minSdkVersion 21
-        targetSdkVersion 26
-        versionCode 12
-        versionName "1.0.12"
+        minSdkVersion 25
+        targetSdkVersion 30
+        versionCode 13
+        versionName "1.1.0"
         javaCompileOptions {
             annotationProcessorOptions {
                 includeCompileClasspath false
@@ -48,7 +48,7 @@ android {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation 'com.android.support:appcompat-v7:26.1.0'
+    implementation "androidx.appcompat:appcompat:1.3.0"
     //implementation 'com.android.support:multidex:1.0.3'
     // TODO: add dagger2 DI library and annotation processor
     implementation 'com.github.stephanenicolas.toothpick:toothpick-runtime:1.1.3'

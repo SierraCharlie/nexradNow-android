@@ -16,7 +16,7 @@ import java.util.List;
 public class RendererInventory {
 
     protected static Class knownClasses[] =
-            {P19r0Renderer.class, P20MinusRRenderer.class, P37crRenderer.class, P38crRenderer.class};
+            {P94r0Renderer.class, P37crRenderer.class, P38crRenderer.class};
     protected NexradRenderer[] renderers;
     protected String[] codes;
     protected String[] descriptions;

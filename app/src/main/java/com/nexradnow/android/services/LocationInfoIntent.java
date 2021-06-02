@@ -5,7 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.location.Address;
 import android.location.Geocoder;
-import android.support.v4.content.LocalBroadcastManager;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import com.nexradnow.android.app.NexradApp;
 import com.nexradnow.android.exception.NexradNowException;
 import com.nexradnow.android.model.LatLongCoordinates;
