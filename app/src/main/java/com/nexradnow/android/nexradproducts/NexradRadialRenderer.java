@@ -13,6 +13,9 @@ import ucar.ma2.Array;
 import ucar.ma2.ArrayFloat;
 import ucar.nc2.NetcdfFile;
 import ucar.nc2.Variable;
+import ucar.nc2.util.CancelTask;
+import ucar.unidata.io.InMemoryRandomAccessFile;
+import ucar.unidata.io.RandomAccessFile;
 
 import java.util.Collection;
 
@@ -85,7 +88,24 @@ lon2 = lon1 + atan2(sin(θ)*sin(d/R)*cos(lat1), cos(d/R)−sin(lat1)*sin(lat2))
             productPaint = new Paint();
         }
         try {
-            NetcdfFile netcdfFile = NetcdfFile.openInMemory("sn.last", rawData);
+            CancelTask cancelTask = new CancelTask() {
+                @Override
+                public boolean isCancel() {
+                    return false;
+                }
+
+                @Override
+                public void setError(String msg) {
+
+                }
+
+                @Override
+                public void setProgress(String msg, int progress) {
+
+                }
+            };
+            RandomAccessFile netRaf = new InMemoryRandomAccessFile("file://sn.last", rawData);
+            NetcdfFile netcdfFile = NetcdfFile.open(netRaf, "file://sn.last", cancelTask,null);
             float latOrigin = Float.NaN;
             float lonOrigin = Float.NaN;
             float gateDistancesMeters[] = null;
