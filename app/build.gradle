@@ -4,16 +4,18 @@ plugins {
     id 'org.jetbrains.kotlin.plugin.compose'
 }
 
+
 android {
-    compileSdk 34
+    compileSdk 36
     namespace "com.nexradnow.android.app"
 
     defaultConfig {
         applicationId "com.nexradnow.android.app"
         minSdk 30
-        targetSdk 35
-        versionCode 17
-        versionName "1.1.4"
+        //noinspection EditedTargetSdkVersion
+        targetSdk 36
+        versionCode 19
+        versionName "1.1.6"
         multiDexEnabled true
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -78,7 +80,7 @@ dependencies {
     // EventBus for inter-component communications
     implementation 'de.greenrobot:eventbus:2.4.0'
     // Location services etc
-    implementation 'com.google.android.gms:play-services-location:15.0.1'
+    implementation 'com.google.android.gms:play-services-location:16.0.0'
     // FTP client
     implementation 'commons-net:commons-net:3.3'
     // IOUtils
